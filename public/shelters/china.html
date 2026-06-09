@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL 中式像素禅意避难所</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0e14;
+            font-family: -apple-system, sans-serif;
+        }
+        /* 强制 Canvas 降采样后进行像素级锐化，拒绝平滑模糊 */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #4a5568;
+            font-size: 11px;
+            letter-spacing: 2px;
+            pointer-events: none;
+        }
+        .title-panel {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .title-panel h2 {
+            color: #a0aec0;
+            font-size: 15px;
+            letter-spacing: 5px;
+            font-weight: 300;
+            margin-bottom: 5px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+        }
+        .title-panel p {
+            color: #4a5568;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">CHINESE VOXEL MODE // RENDER: 400x300</div>
+    <div class="title-panel">
+        <h2>「 独坐幽篁，一灯如豆 」</h2>
+        <p>不问人间万千事，暂留孤影伴流萤</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- 1. 基础场景与超低像素画布设置 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0e14);
+        scene.fog = new THREE.FogExp2(0x0b0e14, 0.02);
+
+        // 极限像素分辨率
+        const RENDER_W = 400;
+        const RENDER_H = 300;
+
+        // 正交相机保持 2.5D 像素沙盒质感
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewSize = 9;
+        const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 1, 1000);
+        camera.position.set(12, 9, 12);
+        camera.lookAt(0, 1.2, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(RENDER_W, RENDER_H, false);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.BasicShadowMap; // 纯硬阴影，拒绝柔化
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. 传统中式色彩材质调色板 ---
+        const palette = {
+            stone: new THREE.MeshLambertMaterial({ color: 0x1c2024, flatShading: true }),     // 黛青青砖
+            moss: new THREE.MeshLambertMaterial({ color: 0x1f3326, flatShading: true }),      // 苍苔暗绿
+            chinaRed: new THREE.MeshLambertMaterial({ color: 0x9c2c2c, flatShading: true }),  // 漆红立柱
+            tile: new THREE.MeshLambertMaterial({ color: 0x2d3238, flatShading: true }),      // 瓦片深灰
+            bamboo: new THREE.MeshLambertMaterial({ color: 0x2b4c33, flatShading: true }),    // 幽竹翠绿
+            gold: new THREE.MeshLambertMaterial({ color: 0xbfa15f, flatShading: true }),     // 亭顶鎏金
+            glow: new THREE.MeshBasicMaterial({ color: 0xffaa00 }),                           // 宫灯明黄
+            firefly: new THREE.MeshBasicMaterial({ color: 0xccff33 })                         // 萤火荧绿
+        };
+
+        const world = new THREE.Group();
+        scene.add(world);
+
+        // --- 3. 像素几何体构建 (Voxel Building) ---
+
+        // 青砖假山地基
+        const baseGeo = new THREE.BoxGeometry(10, 1.5, 10);
+        const baseMesh = new THREE.Mesh(baseGeo, palette.stone);
+        baseMesh.position.y = -0.75;
+        baseMesh.receiveShadow = true;
+        world.add(baseMesh);
+
+        // 苔藓表层
+        const mossGeo = new THREE.BoxGeometry(9.6, 0.2, 9.6);
+        const mossMesh = new THREE.Mesh(mossGeo, palette.moss);
+        mossMesh.position.y = 0.1;
+        mossMesh.receiveShadow = true;
+        world.add(mossMesh);
+
+        // 古典方凉亭 (The Pixel Pavilion)
+        const pavilion = new THREE.Group();
+        
+        // 亭子地台
+        const plat = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.3, 4.4), palette.stone);
+        plat.position.y = 0.25;
+        plat.receiveShadow = true;
+        plat.castShadow = true;
+        pavilion.add(plat);
+
+        // 四根朱红立柱
+        const pillarW = 0.25;
+        const pillarH = 2.8;
+        const pPos = 1.7; // 立柱间距半径
+        const pillarsData = [
+            {x: pPos, z: pPos}, {x: -pPos, z: pPos},
+            {x: pPos, z: -pPos}, {x: -pPos, z: -pPos}
+        ];
+        pillarsData.forEach(pos => {
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(pillarW, pillarH, pillarW), palette.chinaRed);
+            pillar.position.set(pos.x, pillarH/2 + 0.4, pos.z);
+            pillar.castShadow = true;
+            pavilion.add(pillar);
+        });
+
+        // 飞檐攒尖顶 (Layered Voxel Roof)
+        const roofLayers = [
+            {w: 5.2, h: 0.3, d: 5.2, y: 3.3},  // 檐口
+            {w: 4.2, h: 0.3, d: 4.2, y: 3.6},
+            {w: 3.0, h: 0.4, d: 3.0, y: 3.9},
+            {w: 1.8, h: 0.4, d: 1.8, y: 4.2},
+            {w: 0.8, h: 0.4, d: 0.8, y: 4.5}   // 亭尖
+        ];
+        roofLayers.forEach(layer => {
+            const roofMesh = new THREE.Mesh(new THREE.BoxGeometry(layer.w, layer.h, layer.d), palette.tile);
+            roofMesh.position.y = layer.y;
+            roofMesh.castShadow = true;
+            pavilion.add(roofMesh);
+        });
+
+        // 亭顶宝顶（鎏金）
+        const finial = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), palette.gold);
+        finial.position.y = 4.8;
+        pavilion.add(finial);
+
+        pavilion.position.set(-1, 0, -1);
+        world.add(pavilion);
+
+        // 挂在亭檐的传统宫灯
+        const lanternGroup = new THREE.Group();
+        const hook = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), palette.tile);
+        hook.position.y = 3.2;
+        
+        const lanternBody = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.5), palette.chinaRed);
+        lanternBody.position.y = 2.7;
+        
+        const lanternCore = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.5, 0.38), palette.glow);
+        lanternCore.position.y = 2.7;
+
+        lanternGroup.add(hook, lanternBody, lanternCore);
+        // 挂在靠前的一根柱子檐口
+        lanternGroup.position.set(0.7, 0, 0.7);
+        world.add(lanternGroup);
+
+        // 像素幽竹群 (Voxel Bamboo Grove)
+        function createBamboo(bx, bz, bHeight) {
+            const bamboo = new THREE.Group();
+            let currentY = 0.2;
+            // 节节高升效果：用带有微小间隙的像素块堆叠
+            for(let j=0; j<bHeight; j++) {
+                const segH = 0.5 + Math.random()*0.2;
+                const segment = new THREE.Mesh(new THREE.BoxGeometry(0.18, segH - 0.05, 0.18), palette.bamboo);
+                segment.position.y = currentY + segH/2;
+                segment.castShadow = true;
+                bamboo.add(segment);
+
+                // 随机突出一两个像素叶片子集
+                if(j > 3 && Math.random() > 0.5) {
+                    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.2), palette.bamboo);
+                    leaf.position.set(Math.random() > 0.5 ? 0.25 : -0.25, currentY + segH/2, 0);
+                    bamboo.add(leaf);
+                }
+                currentY += segH;
+            }
+            bamboo.position.set(bx, 0, bz);
+            return bamboo;
+        }
+
+        // 在凉亭后侧和右侧错落栽种竹子
+        const bambooPositions = [
+            {x: 3.5, z: -2.5, h: 8}, {x: 2.5, z: -3.5, h: 9},
+            {x: 3.8, z: -1.0, h: 7}, {x: -3.5, z: 3.0, h: 8},
+            {x: -2.5, z: 3.5, h: 6}, {x: -3.8, z: 1.5, h: 7}
+        ];
+        bambooPositions.forEach(p => {
+            world.add(createBamboo(p.x, p.z, p.h));
+        });
+
+        // --- 4. 动态流萤粒子系统 (Fireflies System) ---
+        const fireflyCount = 25;
+        const fireflies = [];
+        const flyGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12); // 单个像素点级粒子
+
+        for (let i = 0; i < fireflyCount; i++) {
+            const fly = new THREE.Mesh(flyGeo, palette.firefly);
+            fly.position.set(
+                Math.random() * 8 - 4,
+                Math.random() * 4 + 0.5,
+                Math.random() * 8 - 4
+            );
+            // 自定义动态数据
+            fly.userData = {
+                angle: Math.random() * Math.PI * 2,
+                speed: 0.02 + Math.random() * 0.02,
+                yStep: 0.01 + Math.random() * 0.01,
+                phase: Math.random() * 10
+            };
+            world.add(fly);
+            fireflies.push(fly);
+        }
+
+        // --- 5. 光影环境 (Midnight Lantern & Moonlight) ---
+        const ambientLight = new THREE.AmbientLight(0x0a101d, 2.0); // 深邃夜空泛光
+        scene.add(ambientLight);
+
+        const moonLight = new THREE.DirectionalLight(0x4a658a, 1.0); // 幽冷月光
+        moonLight.position.set(-8, 12, -4);
+        moonLight.castShadow = true;
+        moonLight.shadow.mapSize.width = 256; // 低保真阴影纹理尺寸
+        moonLight.shadow.mapSize.height = 256;
+        scene.add(moonLight);
+
+        // 宫灯核心点光源（暖黄色火光）
+        const lanternLight = new THREE.PointLight(0xff8c00, 2.5, 7);
+        lanternLight.position.set(0.7, 2.5, 0.7);
+        lanternLight.castShadow = true;
+        lanternLight.shadow.mapSize.width = 128;
+        world.add(lanternLight);
+
+        // --- 6. 实时渲染与禅意动画轴 ---
+        const clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            const elapsed = clock.getElapsedTime();
+
+            // 景观整体像东方微缩八音盒般极其缓慢地兜圈
+            world.rotation.y = elapsed * 0.04;
+
+            // 模拟蜡烛/油灯的像素级不规则闪烁阻尼
+            lanternLight.intensity = 2.2 + Math.sin(elapsed * 9.0) * 0.25 + Math.cos(elapsed * 14.0) * 0.1;
+            
+            // 同步让宫灯材质的亮度随之微变
+            palette.glow.color.setHex(lanternLight.intensity > 2.2 ? 0xffbb11 : 0xff9900);
+
+            // 流萤动态轨迹更新
+            fireflies.forEach((fly, index) => {
+                fly.userData.angle += fly.userData.speed;
+                // 绕y轴做圆周缓动，同时上下波浪形起伏
+                fly.position.x += Math.cos(fly.userData.angle) * 0.015;
+                fly.position.z += Math.sin(fly.userData.angle) * 0.015;
+                fly.position.y += Math.sin(elapsed * 2.0 + fly.userData.phase) * fly.userData.yStep;
+
+                // 动态缩放和闪烁，模拟萤火虫屁股后面忽明忽暗的生物光
+                const scaleFactor = 0.6 + Math.sin(elapsed * 4.0 + index) * 0.4;
+                fly.scale.set(scaleFactor, scaleFactor, scaleFactor);
+
+                // 边界重置：别飞出岛屿太远
+                if(Math.abs(fly.position.x) > 5 || Math.abs(fly.position.z) > 5 || fly.position.y > 6 || fly.position.y < 0.2) {
+                    fly.position.set(Math.random() * 6 - 3, Math.random() * 3 + 0.5, Math.random() * 6 - 3);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // 视口缩放自适应保持
+        window.addEventListener('resize', () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -viewSize * aspect;
+            camera.right = viewSize * aspect;
+            camera.top = viewSize;
+            camera.bottom = -viewSize;
+            camera.updateProjectionMatrix();
+        });
+
+        // 启动中式深夜安全区
+        renderLoop();
+    </script>
+</body>
+</html>

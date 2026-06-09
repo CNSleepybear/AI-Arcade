@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL 英式雨夜像素避难所</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #080a10;
+            font-family: serif; /* 使用衬线体呼应英伦复古感 */
+        }
+        /* 经典降采样像素强制锐化机制 */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #4b526d;
+            font-size: 11px;
+            letter-spacing: 2px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        .title-panel {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .title-panel h2 {
+            color: #c9cedf;
+            font-size: 16px;
+            letter-spacing: 4px;
+            font-weight: 400;
+            margin-bottom: 6px;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.7);
+        }
+        .title-panel p {
+            color: #525a74;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">BRITISH RAIN MODE // CANVAS: 400x300</div>
+    <div class="title-panel">
+        <h2>「 雾都细雨，深夜鸣铃 」</h2>
+        <p>THE RED BOOTH // 生产环境已隔离，静听雨落声</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- 1. 初始化场景与经典的浓雾机制（伦敦雾） ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x080a10); // 深沉的雨夜蓝黑
+        scene.fog = new THREE.FogExp2(0x080a10, 0.03); // 较浓的雾气，制造景深
+
+        const RENDER_W = 400;
+        const RENDER_H = 300;
+
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewSize = 8.5;
+        const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 1, 1000);
+        camera.position.set(12, 10, 12);
+        camera.lookAt(0, 1.2, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(RENDER_W, RENDER_H, false);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.BasicShadowMap; // 像素硬阴影
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. 英伦雨夜复古调色板 ---
+        const palette = {
+            cobble: new THREE.MeshLambertMaterial({ color: 0x1c1e24, flatShading: true }),     // 湿润的鹅卵石路
+            curb: new THREE.MeshLambertMaterial({ color: 0x2e323d, flatShading: true }),       // 路沿石
+            brick: new THREE.MeshLambertMaterial({ color: 0x3d2727, flatShading: true }),      // 维多利亚红砖墙
+            britishRed: new THREE.MeshLambertMaterial({ color: 0x8a1c1c, flatShading: true }), // 皇家邮政红
+            ironBlack: new THREE.MeshLambertMaterial({ color: 0x16171a, flatShading: true }),  // 铸铁路灯黑
+            windowGlow: new THREE.MeshBasicMaterial({ color: 0xffdd77 }),                      // 电话亭温馨黄光
+            lampGlow: new THREE.MeshBasicMaterial({ color: 0xffeedd }),                        // 路灯白炽暖光
+            rainDrop: new THREE.MeshBasicMaterial({ color: 0x485673 })                         // 像素雨丝蓝灰
+        };
+
+        const world = new THREE.Group();
+        scene.add(world);
+
+        // --- 3. 构建英伦体素模型 (Voxel Construction) ---
+
+        // 街道地基
+        const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(10.5, 1.5, 10.5), palette.cobble);
+        baseMesh.position.y = -0.75;
+        baseMesh.receiveShadow = true;
+        world.add(baseMesh);
+
+        // 人行道台阶 (Curb)
+        const sidewalk = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.3, 5.0), palette.curb);
+        sidewalk.position.set(0, 0.15, -2.75);
+        sidewalk.receiveShadow = true;
+        sidewalk.castShadow = true;
+        world.add(sidewalk);
+
+        // 背景老红砖墙 corner
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(10.5, 5.5, 0.8), palette.brick);
+        backWall.position.set(0, 2.75, -5.0);
+        backWall.castShadow = true;
+        backWall.receiveShadow = true;
+        world.add(backWall);
+
+        // 经典红色电话亭 (The British K6 Telephone Box)
+        const phoneBooth = new THREE.Group();
+        
+        // 电话亭底座
+        const boothBase = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 1.5), palette.ironBlack);
+        boothBase.position.y = 0.2;
+        phoneBooth.add(boothBase);
+
+        // 内部发光核心 (透过玻璃出来的光)
+        const boothCore = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.6, 1.3), palette.windowGlow);
+        boothCore.position.y = 1.7;
+        phoneBooth.add(boothCore);
+
+        // 外部红色框架柱（4根转角像素柱）
+        const fW = 0.15; // 框架厚度
+        const fH = 2.7;
+        const framesData = [
+            {x: 0.68, z: 0.68}, {x: -0.68, z: 0.68},
+            {x: 0.68, z: -0.68}, {x: -0.68, z: -0.68}
+        ];
+        framesData.forEach(pos => {
+            const framePillar = new THREE.Mesh(new THREE.BoxGeometry(fW, fH, fW), palette.britishRed);
+            framePillar.position.set(pos.x, fH/2 + 0.4, pos.z);
+            framePillar.castShadow = true;
+            phoneBooth.add(framePillar);
+        });
+
+        // 电话亭顶部腰线与弧形圆顶
+        const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.2, 1.52), palette.britishRed);
+        roofTrim.position.y = 3.15;
+        roofTrim.castShadow = true;
+        
+        const roofDome1 = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.2, 1.3), palette.britishRed);
+        roofDome1.position.y = 3.35;
+        const roofDome2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.15, 0.9), palette.britishRed);
+        roofDome2.position.y = 3.5;
+        
+        phoneBooth.add(roofTrim, roofDome1, roofDome2);
+        
+        // 摆放在人行道左侧
+        phoneBooth.position.set(-2.2, 0.3, -2.2);
+        world.add(phoneBooth);
+
+        // 维多利亚式双头铸铁老路灯 (Victorian Street Lamp)
+        const streetLamp = new THREE.Group();
+        
+        // 灯杆
+        const lampPole = new THREE.Mesh(new THREE.BoxGeometry(0.18, 4.2, 0.18), palette.ironBlack);
+        lampPole.position.y = 2.1;
+        lampPole.castShadow = true;
+        streetLamp.add(lampPole);
+        
+        // 底部加固基座
+        const lampBase = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.4), palette.ironBlack);
+        lampBase.position.y = 0.4;
+        streetLamp.add(lampBase);
+
+        // T字形双头分叉支架
+        const crossbar = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 0.18), palette.ironBlack);
+        crossbar.position.y = 4.0;
+        streetLamp.add(crossbar);
+
+        // 左右两个像素灯头
+        function createLampHead(isLeft) {
+            const head = new THREE.Group();
+            const glowBox = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), palette.lampGlow);
+            glowBox.position.y = -0.2;
+            
+            const cap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), palette.ironBlack);
+            cap.position.y = 0.05;
+            
+            head.add(glowBox, cap);
+            head.position.set(isLeft ? -0.8 : 0.8, 4.0, 0);
+            return head;
+        }
+        streetLamp.add(createLampHead(true), createLampHead(false));
+
+        // 摆放在马路便道右前侧
+        streetLamp.position.set(2.0, 0.3, -1.0);
+        world.add(streetLamp);
+
+        // --- 4. 动态英伦像素雨粒子系统 (London Pixel Rain) ---
+        const rainCount = 65;
+        const rainParticles = [];
+        const rainGeo = new THREE.BoxGeometry(0.04, 0.4, 0.04); // 细长条的像素雨丝
+
+        for (let i = 0; i < rainCount; i++) {
+            const drop = new THREE.Mesh(rainGeo, palette.rainDrop);
+            resetDrop(drop);
+            // 随机打散初始高度
+            drop.position.y = Math.random() * 7 + 0.3;
+            world.add(drop);
+            rainParticles.push(drop);
+        }
+
+        function resetDrop(mesh) {
+            mesh.position.x = Math.random() * 11 - 5.5;
+            mesh.position.y = 7 + Math.random() * 2;
+            mesh.position.z = Math.random() * 11 - 5.5;
+            mesh.userData = {
+                speedY: 0.12 + Math.random() * 0.06 // 下落速度较快，符合雨滴特征
+            };
+        }
+
+        // --- 5. 灯光氛围系统 (双重冷暖光源交织) ---
+        const ambientLight = new THREE.AmbientLight(0x0a0d1a, 1.8); // 极其昏暗的深夜基调
+        scene.add(ambientLight);
+
+        // 电话亭内部的暖金点光源
+        const boothLight = new THREE.PointLight(0xff9922, 2.2, 5);
+        boothLight.position.set(-2.2, 1.8, -2.2);
+        boothLight.castShadow = true;
+        world.add(boothLight);
+
+        // 路灯高空投射下的白炽暖光（左右双头合一简化为一个强光源）
+        const streetLight = new THREE.PointLight(0xffeebb, 3.0, 8);
+        streetLight.position.set(2.0, 3.8, -1.0);
+        streetLight.castShadow = true;
+        streetLight.shadow.mapSize.width = 256;
+        world.add(streetLight);
+
+        // --- 6. 实时动画轴与雨夜物理更新 ---
+        const clock = new THREE.Clock();
+
+        function render() {
+            requestAnimationFrame(render);
+
+            const elapsed = clock.getElapsedTime();
+
+            // 景观沙盒整体极其缓慢地像八音盒一样转动
+            world.rotation.y = elapsed * 0.04;
+
+            // 模拟雨夜潮湿空气中，路灯和电话亭灯光的微弱折射闪烁 (Rainy Mist Flicker)
+            streetLight.intensity = 2.8 + Math.sin(elapsed * 4.0) * 0.15 + Math.cos(elapsed * 11.0) * 0.08;
+            boothLight.intensity = 2.0 + Math.sin(elapsed * 5.5) * 0.12;
+
+            // 像素雨下落物理逻辑
+            rainParticles.forEach(drop => {
+                drop.position.y -= drop.userData.speedY;
+                
+                // 模拟落地瞬间迅速重置
+                if (drop.position.y < 0.2) {
+                    resetDrop(drop);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // 保持视口弹性自适应
+        window.addEventListener('resize', () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -viewSize * aspect;
+            camera.right = viewSize * aspect;
+            camera.top = viewSize;
+            camera.bottom = -viewSize;
+            camera.updateProjectionMatrix();
+        });
+
+        // 开启雨夜数字避难所
+        render();
+    </script>
+</body>
+</html>

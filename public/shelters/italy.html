@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL 意式慵懒像素避难所</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0816;
+            font-family: 'Times New Roman', Times, serif; /* 使用意式古典衬线体 */
+        }
+        /* 核心硬核像素对齐：强制低分辨率降采样，不带任何抗锯齿模糊 */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #534566;
+            font-size: 11px;
+            letter-spacing: 2px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        .title-panel {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .title-panel h2 {
+            color: #e3bba8;
+            font-size: 15px;
+            letter-spacing: 5px;
+            font-weight: 400;
+            margin-bottom: 6px;
+            text-shadow: 0 2px 6px rgba(220, 90, 70, 0.4);
+        }
+        .title-panel p {
+            color: #634d5d;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">MEDITERRANEAN TWILIGHT // RENDER: 400x300</div>
+    <div class="title-panel">
+        <h2>「 水巷微醺，夜曲摇曳 」</h2>
+        <p>VENEZIA SANCTUARY // 进程已挂起，停止无尽重试，今夜拒绝内卷</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- 1. 初始化场景与暮色浓雾设置 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0816); // 意式深夜深紫红底色
+        scene.fog = new THREE.FogExp2(0x0b0816, 0.025);
+
+        const RENDER_W = 400;
+        const RENDER_H = 300;
+
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewSize = 8.5;
+        const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 1, 1000);
+        camera.position.set(12, 9, 12);
+        camera.lookAt(0, 0.8, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(RENDER_W, RENDER_H, false);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.BasicShadowMap; // 像素硬阴影
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. 意式古典与地中海调色板材质 ---
+        const palette = {
+            water: new THREE.MeshLambertMaterial({ color: 0x142b30, flatShading: true }),       // 碧蓝微暗的水道
+            pierStone: new THREE.MeshLambertMaterial({ color: 0x36343b, flatShading: true }),   // 临水石台
+            terracotta: new THREE.MeshLambertMaterial({ color: 0x9e4331, flatShading: true }),  // 经典意式陶土红砖墙
+            ochreYellow: new THREE.MeshLambertMaterial({ color: 0xcca05e, flatShading: true }), // 温暖的黄昏赭石
+            gondolaBlack: new THREE.MeshLambertMaterial({ color: 0x111215, flatShading: true }),// 贡多拉玄黑木
+            gondolaTrim: new THREE.MeshLambertMaterial({ color: 0x822020, flatShading: true }), // 贡多拉内饰红
+            poleBlue: new THREE.MeshLambertMaterial({ color: 0x1f4172 }),                       // 系船柱经典蓝
+            poleWhite: new THREE.MeshLambertMaterial({ color: 0xe6e1d5 }),                      // 系船柱经典白
+            lanternGlow: new THREE.MeshBasicMaterial({ color: 0xffb042 }),                      // 户外壁灯香槟金
+            seaSparkle: new THREE.MeshBasicMaterial({ color: 0x3da39e })                        // 水面夜光粒子
+        };
+
+        const world = new THREE.Group();
+        scene.add(world);
+
+        // --- 3. 构造意式体素模型 (Voxel Construction) ---
+
+        // 威尼斯水道地基 (右半边大面积水域)
+        const waterMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 7), palette.water);
+        waterMesh.position.set(0, -0.6, 1.5);
+        waterMesh.receiveShadow = true;
+        world.add(waterMesh);
+
+        // 岸边石台 (左后方靠墙码头)
+        const pierMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 1.5, 3.5), palette.pierStone);
+        pierMesh.position.set(0, -0.6 + 0.15, -3.75);
+        pierMesh.receiveShadow = true;
+        pierMesh.castShadow = true;
+        world.add(pierMesh);
+
+        // 临水意式连排住宅外墙 facada
+        const building = new THREE.Group();
+        
+        // 主楼体（陶土红）
+        const mainBlock = new THREE.Mesh(new THREE.BoxGeometry(5.5, 5.0, 2.5), palette.terracotta);
+        mainBlock.position.set(-1.5, 2.5, -0.5);
+        mainBlock.castShadow = true;
+        mainBlock.receiveShadow = true;
+        building.add(mainBlock);
+
+        // 隔壁拼接楼体（赭石黄，制造错落感）
+        const sideBlock = new THREE.Mesh(new THREE.BoxGeometry(3.5, 4.5, 2.2), palette.ochreYellow);
+        sideBlock.position.set(3.0, 2.25, -0.65);
+        sideBlock.castShadow = true;
+        sideBlock.receiveShadow = true;
+        building.add(sideBlock);
+
+        // 发光水窗 (透出橘黄色暖光)
+        const windowGlow1 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.4, 0.1), palette.lanternGlow);
+        windowGlow1.position.set(-1.5, 2.2, 0.76);
+        const windowGlow2 = windowGlow1.clone();
+        windowGlow2.position.set(1.2, 2.2, 0.76);
+        building.add(windowGlow1, windowGlow2);
+
+        // 意式拱形木质窗框
+        const frameBox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.5, 0.05), palette.gondolaBlack);
+        frameBox.position.set(-1.5, 2.2, 0.78);
+        const frameBox2 = frameBox.clone();
+        frameBox2.position.set(1.2, 2.2, 0.78);
+        building.add(frameBox, frameBox2);
+
+        // 临水小露台底座 (Voxel Balcony)
+        const balcony = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 0.6), palette.pierStone);
+        balcony.position.set(-1.5, 1.3, 1.1);
+        balcony.castShadow = true;
+        building.add(balcony);
+
+        building.position.set(0, 0.15, -4.5);
+        world.add(building);
+
+        // 【标志性模型】经典威尼斯蓝白相间条纹系船柱 (Pali di Palo)
+        function createMooringPole(px, pz) {
+            const poleGroup = new THREE.Group();
+            const segmentH = 0.25;
+            const totalSegments = 11;
+            
+            for(let i=0; i<totalSegments; i++) {
+                // 蓝白相间交替堆叠方块
+                const mat = (i % 2 === 0) ? palette.poleBlue : palette.poleWhite;
+                const seg = new THREE.Mesh(new THREE.BoxGeometry(0.2, segmentH, 0.2), mat);
+                seg.position.y = i * segmentH + segmentH/2;
+                seg.castShadow = true;
+                poleGroup.add(seg);
+            }
+            // 柱子顶部的金色装饰头
+            const cap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.15, 0.24), palette.lanternGlow);
+            cap.position.y = totalSegments * segmentH + 0.05;
+            poleGroup.add(cap);
+
+            poleGroup.position.set(px, 0.1, pz);
+            return poleGroup;
+        }
+        const pole1 = createMooringPole(-1.5, 0.2);
+        const pole2 = createMooringPole(2.0, 0.8);
+        world.add(pole1, pole2);
+
+        // 【标志性模型】传统威尼斯贡多拉小船 (Voxel Venetian Gondola)
+        const gondola = new THREE.Group();
+        
+        // 船底平铺
+        const base = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.2, 0.9), palette.gondolaBlack);
+        base.position.y = 0.1;
+        base.castShadow = true;
+        gondola.add(base);
+
+        // 内部红色座椅内饰像素块
+        const inside = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 0.7), palette.gondolaTrim);
+        inside.position.set(0, 0.2, 0);
+        gondola.add(inside);
+
+        // 向上翘起的方块船头 (Prow)
+        const bow = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.9), palette.gondolaBlack);
+        bow.position.set(1.9, 0.35, 0);
+        bow.castShadow = true;
+        
+        // 贡多拉标志性的金属船首饰（Ferro）
+        const ferro = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.6, 0.3), palette.poleWhite);
+        ferro.position.set(2.2, 0.7, 0);
+        gondola.add(bow, ferro);
+
+        // 向上翘起的船尾 (Stern)
+        const stern = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.9), palette.gondolaBlack);
+        stern.position.set(-1.9, 0.3, 0);
+        stern.castShadow = true;
+        gondola.add(stern);
+
+        // 让贡多拉斜着停靠在两个系船柱之间的水面上
+        gondola.position.set(0.2, 0, 1.4);
+        gondola.rotation.y = 0.25; 
+        world.add(gondola);
+
+        // 户外锻铁壁灯 (Wall Lantern)
+        const wallLantern = new THREE.Group();
+        const lGlass = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.35, 0.25), palette.lanternGlow);
+        const lCap = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.1, 0.35), palette.gondolaBlack);
+        lCap.position.y = 0.2;
+        wallLantern.add(lGlass, lCap);
+        wallLantern.position.set(-1.5, 2.7, -3.6);
+        world.add(wallLantern);
+
+        // --- 4. 动态地中海夜光粒子系统 (Twilight Water Sparkles) ---
+        const particleCount = 30;
+        const sparkles = [];
+        const sparkleGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1); // 纯粹的晶格像素光点
+
+        for (let i = 0; i < particleCount; i++) {
+            const spark = new THREE.Mesh(sparkleGeo, palette.seaSparkle);
+            resetSparkle(spark);
+            // 预先随机铺开 X 和 Z 轴
+            spark.position.y = 0.1 + Math.random() * 0.4;
+            world.add(spark);
+            sparkles.push(spark);
+        }
+
+        function resetSparkle(mesh) {
+            mesh.position.x = Math.random() * 9 - 4.5;
+            mesh.position.y = 0.05;
+            mesh.position.z = Math.random() * 6 - 1.5;
+            mesh.userData = {
+                vSpeed: 0.004 + Math.random() * 0.006, // 缓慢浮起
+                maxHeight: 0.4 + Math.random() * 0.5,
+                sinSpeed: 2.0 + Math.random() * 2.0
+            };
+        }
+
+        // --- 5. 氛围灯光系统 (暮色余晖与浪漫暗光的交织) ---
+        const ambientLight = new THREE.AmbientLight(0x131124, 2.2); // 全局浪漫的夜幕蓝紫泛光
+        scene.add(ambientLight);
+
+        // 壁灯射出的核心橘黄色点光源
+        const lanternLight = new THREE.PointLight(0xff9431, 3.2, 7);
+        lanternLight.position.set(-1.5, 2.6, -3.3);
+        lanternLight.castShadow = true;
+        lanternLight.shadow.mapSize.width = 256; // 刚硬的像素边缘
+        world.add(lanternLight);
+
+        // 运河窗户内透出的二号环境暖光
+        const windowLight = new THREE.PointLight(0xffaa44, 1.8, 5);
+        windowLight.position.set(0, 2.0, -3.0);
+        world.add(windowLight);
+
+        // --- 6. 核心循环轴与慵懒摇曳动画物理逻辑 ---
+        const clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            const elapsed = clock.getElapsedTime();
+
+            // 整个景观沙盒像水上八音盒一样极其平缓地自转
+            world.rotation.y = elapsed * 0.04;
+
+            // 【微醺摇曳算法】模拟停泊在威尼斯水面上的贡多拉随波轻轻摇晃的物理特征
+            // 精确操作 X轴与 Z轴的微小旋转，配合正弦波，做出高拟真的水波起伏感
+            gondola.rotation.z = Math.sin(elapsed * 1.5) * 0.025;
+            gondola.position.y = Math.cos(elapsed * 1.2) * 0.03;
+
+            // 壁灯灯火在夜风中轻微闪烁
+            lanternLight.intensity = 3.0 + Math.sin(elapsed * 4.0) * 0.18;
+
+            // 夜光粒子向上浮起并缓缓消逝的物理更新
+            sparkles.forEach(spark => {
+                spark.position.y += spark.userData.vSpeed;
+                // 带有轻微的横向简谐漂移
+                spark.position.x += Math.sin(elapsed * spark.userData.sinSpeed) * 0.002;
+
+                if (spark.position.y > spark.userData.maxHeight) {
+                    resetSparkle(spark);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // 视口弹性自适应
+        window.addEventListener('resize', () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -viewSize * aspect;
+            camera.right = viewSize * aspect;
+            camera.top = viewSize;
+            camera.bottom = -viewSize;
+            camera.updateProjectionMatrix();
+        });
+
+        // 威尼斯微醺模块，启动！
+        renderLoop();
+    </script>
+</body>
+</html>

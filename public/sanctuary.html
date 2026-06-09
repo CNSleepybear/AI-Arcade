@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>万国馆 · The World Sanctuary</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body, html { width: 100%; height: 100%; overflow: hidden; background: #06060a; font-family: 'Microsoft YaHei', sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .ui {
+    position: absolute; pointer-events: none; text-align: center;
+    color: rgba(200,210,230,0.7); letter-spacing: 3px;
+  }
+  .title { top: 25px; width: 100%; font-size: 14px; text-shadow: 0 0 20px rgba(100,120,180,0.4); }
+  .prompt {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1); font-size: 13px;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap;
+  }
+  .prompt.active { opacity: 1; }
+  .hint {
+    position: absolute; bottom: 30px; width: 100%; font-size: 11px;
+    color: rgba(150,160,180,0.4); letter-spacing: 1px;
+  }
+  .crosshair {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 4px; height: 4px; background: rgba(255,255,255,0.5);
+    border-radius: 50%; pointer-events: none;
+  }
+  #overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000; display: none; z-index: 100;
+  }
+  #overlay iframe { width: 100%; height: 100%; border: none; }
+  .exit-tip {
+    position: absolute; top: 20px; right: 25px;
+    color: rgba(255,255,255,0.3); font-size: 12px; pointer-events: none;
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<base target="_blank">
+</head>
+<body>
+<div class="ui title">「 万国馆 · THE WORLD SANCTUARY 」</div>
+<div class="crosshair"></div>
+<div class="prompt" id="prompt">靠近雪球查看</div>
+<div class="hint">鼠标拖拽环顾 · 滚轮缩放 · 靠近雪球按 E 进入 · ESC 退出</div>
+<div id="overlay">
+  <div class="exit-tip">按 ESC 返回万国馆</div>
+  <iframe id="shelter-frame" src=""></iframe>
+</div>
+
+<script>
+// --- 1. 像素渲染配置 ---
+const PIXEL_W = 480, PIXEL_H = 360;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06060a);
+scene.fog = new THREE.FogExp2(0x06060a, 0.018);
+
+const aspect = window.innerWidth / window.innerHeight;
+const d = 10;
+const camera = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 1, 1000);
+camera.position.set(0, 6, 12);
+camera.lookAt(0, 2, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(PIXEL_W, PIXEL_H, false);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// --- 2. 材质调色板 ---
+const M = {
+  floor: new THREE.MeshLambertMaterial({ color: 0x1e1a2e, flatShading: true }),
+  floorTile: new THREE.MeshLambertMaterial({ color: 0x252236, flatShading: true }),
+  wall: new THREE.MeshLambertMaterial({ color: 0x15121e, flatShading: true }),
+  ceiling: new THREE.MeshLambertMaterial({ color: 0x0e0c14, flatShading: true }),
+  beam: new THREE.MeshLambertMaterial({ color: 0x2a2538, flatShading: true }),
+  pedestal: new THREE.MeshLambertMaterial({ color: 0x2a2a35, flatShading: true }),
+  pedestalTop: new THREE.MeshLambertMaterial({ color: 0x3a3a48, flatShading: true }),
+  glass: new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.12, flatShading: true }),
+  glassRim: new THREE.MeshLambertMaterial({ color: 0x8899aa, transparent: true, opacity: 0.3, flatShading: true }),
+  jpRed: new THREE.MeshLambertMaterial({ color: 0x8f2d34, flatShading: true }),
+  jpWood: new THREE.MeshLambertMaterial({ color: 0x5a3a1a, flatShading: true }),
+  jpPink: new THREE.MeshLambertMaterial({ color: 0xd47394, flatShading: true }),
+  cnRed: new THREE.MeshLambertMaterial({ color: 0x9c2c2c, flatShading: true }),
+  cnGold: new THREE.MeshLambertMaterial({ color: 0xbfa15f, flatShading: true }),
+  cnBamboo: new THREE.MeshLambertMaterial({ color: 0x2b4c33, flatShading: true }),
+  ukRed: new THREE.MeshLambertMaterial({ color: 0x8a1c1c, flatShading: true }),
+  ukIron: new THREE.MeshLambertMaterial({ color: 0x16171a, flatShading: true }),
+  ukGlow: new THREE.MeshBasicMaterial({ color: 0xffdd77 }),
+  usaPink: new THREE.MeshBasicMaterial({ color: 0xff2a85 }),
+  usaCyan: new THREE.MeshBasicMaterial({ color: 0x00f3ff }),
+  usaTruck: new THREE.MeshLambertMaterial({ color: 0xb63737, flatShading: true }),
+  usaSand: new THREE.MeshLambertMaterial({ color: 0x211729, flatShading: true }),
+  deTimber: new THREE.MeshLambertMaterial({ color: 0x2b1a11, flatShading: true }),
+  dePlaster: new THREE.MeshLambertMaterial({ color: 0xe6e2d8, flatShading: true }),
+  deRoof: new THREE.MeshLambertMaterial({ color: 0x7a2b22, flatShading: true }),
+  dePine: new THREE.MeshLambertMaterial({ color: 0x13261b, flatShading: true }),
+  frCream: new THREE.MeshLambertMaterial({ color: 0xded0bc, flatShading: true }),
+  frBlue: new THREE.MeshLambertMaterial({ color: 0x1b2d4a, flatShading: true }),
+  frWhite: new THREE.MeshLambertMaterial({ color: 0xeae5da, flatShading: true }),
+  frGreen: new THREE.MeshLambertMaterial({ color: 0x1c3127, flatShading: true }),
+  frGold: new THREE.MeshLambertMaterial({ color: 0xc4873b, flatShading: true }),
+  itWater: new THREE.MeshLambertMaterial({ color: 0x142b30, flatShading: true }),
+  itTerra: new THREE.MeshLambertMaterial({ color: 0x9e4331, flatShading: true }),
+  itOchre: new THREE.MeshLambertMaterial({ color: 0xcca05e, flatShading: true }),
+  itGondola: new THREE.MeshLambertMaterial({ color: 0x111215, flatShading: true }),
+  itPoleB: new THREE.MeshLambertMaterial({ color: 0x1f4172, flatShading: true }),
+  itPoleW: new THREE.MeshLambertMaterial({ color: 0xe6e1d5, flatShading: true }),
+  itGlow: new THREE.MeshBasicMaterial({ color: 0xffb042 }),
+};
+
+// --- 3. 房间构造 ---
+const world = new THREE.Group(); scene.add(world);
+const floor = new THREE.Mesh(new THREE.BoxGeometry(16, 0.2, 12), M.floor);
+floor.position.set(0, -0.1, 0); floor.receiveShadow = true; world.add(floor);
+for(let i=-7; i<8; i++) {
+  const t = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.02, 11), M.floorTile);
+  t.position.set(i, 0.01, 0); t.receiveShadow = true; world.add(t);
+}
+const wBack = new THREE.Mesh(new THREE.BoxGeometry(16, 6, 0.3), M.wall);
+wBack.position.set(0, 3, -6); world.add(wBack);
+const wLeft = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6, 12), M.wall);
+wLeft.position.set(-8, 3, 0); world.add(wLeft);
+const wRight = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6, 12), M.wall);
+wRight.position.set(8, 3, 0); world.add(wRight);
+for(let z of [-4, 0, 4]) {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 0.2), M.beam);
+  b.position.set(0, 5.8, z); world.add(b);
+}
+
+// --- 4. 国家配置 ---
+const COUNTRIES = [
+  { id: 'japan',   name: '日式 · 落樱', file: 'shelters/japan.html',   color: '#8f2d34' },
+  { id: 'china',   name: '中式 · 幽篁', file: 'shelters/china.html',   color: '#9c2c2c' },
+  { id: 'uk',      name: '英式 · 雾雨', file: 'shelters/uk.html',      color: '#8a1c1c' },
+  { id: 'usa',     name: '美式 · 霓虹', file: 'shelters/usa.html',     color: '#ff2a85' },
+  { id: 'germany', name: '德式 · 冬夜', file: 'shelters/germany.html', color: '#7a2b22' },
+  { id: 'france',  name: '法式 · 左岸', file: 'shelters/france.html',  color: '#1b2d4a' },
+  { id: 'italy',   name: '意式 · 水巷', file: 'shelters/italy.html',   color: '#9e4331' },
+];
+
+const radius = 5.5;
+const startA = -Math.PI * 0.45;
+const endA = Math.PI * 0.45;
+COUNTRIES.forEach((c, i) => {
+  const t = i / (COUNTRIES.length - 1);
+  const a = startA + t * (endA - startA);
+  c.pos = [Math.sin(a) * radius, 0, Math.cos(a) * radius - 1];
+});
+
+function box(m, x, y, z, w, h, d, p, cast=false) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  mesh.position.set(x, y, z); if(cast) mesh.castShadow = true;
+  p.add(mesh); return mesh;
+}
+
+// --- 5. 雪球建造 ---
+const globes = [];
+const GLOBE_R = 1.15;
+
+COUNTRIES.forEach(c => {
+  const g = new THREE.Group();
+  g.position.set(...c.pos);
+  world.add(g);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.0, 1.2, 8), M.pedestal);
+  ped.position.y = 0.6; ped.receiveShadow = true; g.add(ped);
+  const pedTop = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.08, 8), M.pedestalTop);
+  pedTop.position.y = 1.22; g.add(pedTop);
+  const nameplate = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 0.05), new THREE.MeshBasicMaterial({ color: c.color }));
+  nameplate.position.set(0, 0.3, 1.0); g.add(nameplate);
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, 16, 16), M.glass);
+  shell.position.y = 2.4; g.add(shell);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(GLOBE_R, 0.03, 8, 24), M.glassRim);
+  rim.position.y = 2.4; rim.rotation.x = Math.PI/2; g.add(rim);
+  const inner = new THREE.Group();
+  inner.position.y = 2.4; inner.scale.setScalar(0.22); g.add(inner);
+  const hill = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.8, 0.8, 8), M.pedestal);
+  hill.position.y = -0.4; inner.add(hill);
+  buildModel(c.id, inner);
+  const particles = buildParticles(c.id, inner);
+  globes.push({ group: g, inner, particles, data: c, angle: 0 });
+});
+
+// --- 6. 各国简化模型 ---
+function buildModel(id, p) {
+  if(id === 'japan') {
+    box(M.jpWood, -0.8, 0.8, 0, 0.12, 1.6, 0.12, p, true);
+    box(M.jpWood, 0.8, 0.8, 0, 0.12, 1.6, 0.12, p, true);
+    box(M.jpRed, 0, 1.5, 0, 1.8, 0.15, 0.15, p, true);
+    box(M.jpRed, 0, 1.25, 0, 2.0, 0.12, 0.18, p, true);
+    box(M.jpWood, 1.2, 0.6, -0.8, 0.15, 1.2, 0.15, p, true);
+    box(M.jpPink, 1.2, 1.4, -0.8, 1.0, 0.6, 1.0, p, true);
+    box(M.jpPink, 1.3, 1.8, -0.7, 0.6, 0.5, 0.6, p, true);
+    box(M.pedestal, -1.2, 0.4, 0.8, 0.25, 0.6, 0.25, p, true);
+    box(M.ukGlow, -1.2, 0.75, 0.8, 0.18, 0.25, 0.18, p);
+  }
+  else if(id === 'china') {
+    [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]].forEach(pos => box(M.cnRed, pos[0], 0.9, pos[1], 0.1, 1.8, 0.1, p, true));
+    box(M.pedestal, 0, 1.8, 0, 1.6, 0.1, 1.6, p, true);
+    box(M.pedestal, 0, 2.0, 0, 1.8, 0.1, 1.8, p, true);
+    box(M.cnGold, 0, 2.3, 0, 0.2, 0.2, 0.2, p);
+    for(let i=0; i<3; i++) box(M.cnBamboo, 1.2+i*0.3, 0.8, -0.5, 0.08, 1.6, 0.08, p, true);
+    box(M.cnRed, -1.2, 0.8, 0.8, 0.2, 0.4, 0.2, p, true);
+    box(M.ukGlow, -1.2, 0.8, 0.8, 0.15, 0.25, 0.15, p);
+  }
+  else if(id === 'uk') {
+    box(M.ukRed, 0, 0.8, 0, 0.8, 1.6, 0.8, p, true);
+    box(M.ukGlow, 0, 0.8, 0, 0.6, 1.2, 0.6, p);
+    box(M.ukIron, 1.2, 1.0, 0.5, 0.08, 2.0, 0.08, p, true);
+    box(M.ukGlow, 1.0, 1.9, 0.5, 0.2, 0.2, 0.2, p);
+    box(M.ukGlow, 1.4, 1.9, 0.5, 0.2, 0.2, 0.2, p);
+  }
+  else if(id === 'usa') {
+    box(M.usaPink, 0, 1.6, -0.8, 1.2, 0.6, 0.2, p, true);
+    box(M.usaCyan, 0, 1.6, -0.7, 0.9, 0.4, 0.25, p);
+    box(M.usaPink, -0.5, 2.1, -0.8, 0.4, 0.1, 0.1, p); box(M.usaPink, 0.5, 2.1, -0.8, 0.4, 0.1, 0.1, p);
+    box(M.usaTruck, 0.8, 0.35, 0.8, 1.4, 0.3, 0.6, p, true);
+    box(M.usaTruck, 0.9, 0.6, 0.8, 0.5, 0.4, 0.55, p, true);
+    box(M.usaTruck, 0.3, 0.55, 0.8, 0.5, 0.35, 0.55, p, true);
+    box(M.cnBamboo, -1.0, 0.6, -0.5, 0.15, 1.2, 0.15, p, true);
+    box(M.cnBamboo, -1.0, 0.9, -0.3, 0.3, 0.1, 0.1, p, true);
+  }
+  else if(id === 'germany') {
+    box(M.dePlaster, 0, 0.9, 0, 1.6, 1.2, 1.4, p, true);
+    [[-0.8, -0.7], [0.8, -0.7], [-0.8, 0.7], [0.8, 0.7]].forEach(pos => box(M.deTimber, pos[0], 0.9, pos[1], 0.08, 1.2, 0.08, p, true));
+    [0.1, 0.6, 1.1].forEach(y => {
+      box(M.deTimber, 0, y, 0.7, 1.7, 0.06, 0.06, p); box(M.deTimber, 0, y, -0.7, 1.7, 0.06, 0.06, p);
+      box(M.deTimber, 0.8, y, 0, 0.06, 0.06, 1.5, p); box(M.deTimber, -0.8, y, 0, 0.06, 0.06, 1.5, p);
+    });
+    [1.5, 1.2, 0.9, 0.6, 0.3].forEach((w, i) => box(M.deRoof, 0, 1.6 + i*0.25, 0, w, 0.15, 1.5, p, true));
+    [[-1.5, -1.2], [1.5, -1.2]].forEach((pos, i) => {
+      box(M.deTimber, pos[0], 0.5, pos[1], 0.1, 1.0, 0.1, p, true);
+      [1.2, 0.9, 0.6].forEach((rw, j) => box(M.dePine, pos[0], 0.8 + j*0.35, pos[1], rw, 0.3, rw, p, true));
+    });
+    box(M.ukGlow, 0, 0.9, 0.71, 0.5, 0.4, 0.05, p);
+  }
+  else if(id === 'france') {
+    box(M.frCream, 0, 1.0, 0, 2.0, 1.4, 1.2, p, true);
+    box(M.frGreen, 0, 0.35, 0.65, 2.1, 0.1, 1.3, p, true);
+    for(let i=0; i<6; i++) box(i%2===0?M.frBlue:M.frWhite, -0.75+i*0.3, 1.75, 0.8, 0.28, 0.08, 0.8, p, true);
+    box(M.ukGlow, 0.5, 1.0, 0.62, 0.8, 0.5, 0.05, p);
+    box(M.frGreen, 1.2, 1.0, 0.5, 0.06, 2.0, 0.06, p, true);
+    box(M.ukGlow, 1.0, 1.9, 0.5, 0.15, 0.15, 0.15, p);
+    box(M.ukGlow, 1.4, 1.9, 0.5, 0.15, 0.15, 0.15, p);
+    box(M.frGreen, -1.2, 0.55, 1.0, 0.5, 0.05, 0.5, p, true);
+    box(M.frGreen, -1.0, 0.3, 0.8, 0.05, 0.5, 0.05, p);
+  }
+  else if(id === 'italy') {
+    box(M.itWater, 0, -0.2, 0, 3.0, 0.3, 2.0, p);
+    box(M.itGondola, 0, 0.05, 0.3, 1.6, 0.1, 0.4, p, true);
+    box(M.itGondola, 0.6, 0.2, 0.3, 0.4, 0.3, 0.35, p, true);
+    box(M.itGondola, -0.6, 0.18, 0.3, 0.35, 0.25, 0.35, p, true);
+    box(M.ukRed, 0, 0.15, 0.3, 0.8, 0.05, 0.3, p);
+    for(let i=0; i<5; i++) box(i%2===0?M.itPoleB:M.itPoleW, -0.8, 0.15+i*0.12, -0.5, 0.1, 0.1, 0.1, p, true);
+    box(M.itGlow, -0.8, 0.75, -0.5, 0.12, 0.08, 0.12, p);
+    box(M.itTerra, -1.2, 1.0, -1.0, 1.5, 1.4, 0.8, p, true);
+    box(M.itOchre, 0.8, 0.9, -1.0, 1.2, 1.2, 0.8, p, true);
+    box(M.itGlow, -1.2, 1.0, -0.58, 0.4, 0.4, 0.05, p);
+  }
+}
+
+// --- 7. 粒子系统 ---
+function buildParticles(id, p) {
+  const list = [];
+  const count = id === 'uk' ? 25 : 20;
+  let color, behavior;
+  switch(id) {
+    case 'japan': color = 0xd47394; behavior = 'fall'; break;
+    case 'china': color = 0xccff33; behavior = 'fly'; break;
+    case 'uk': color = 0x485673; behavior = 'rain'; break;
+    case 'usa': color = 0x9d72b5; behavior = 'wind'; break;
+    case 'germany': color = 0xffffff; behavior = 'snow'; break;
+    case 'france': color = 0xc4873b; behavior = 'leaf'; break;
+    case 'italy': color = 0x3da39e; behavior = 'sparkle'; break;
+  }
+  const geo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 });
+  for(let i=0; i<count; i++) {
+    const mesh = new THREE.Mesh(geo, mat);
+    resetParticle(mesh, behavior);
+    p.add(mesh);
+    list.push({ mesh, behavior, phase: Math.random()*10 });
+  }
+  return list;
+}
+
+function resetParticle(mesh, type) {
+  mesh.position.set((Math.random()-0.5)*3, Math.random()*2.5, (Math.random()-0.5)*3);
+  if(type === 'rain') { mesh.scale.set(0.3, 1.5, 0.3); mesh.position.y = Math.random()*3; }
+  if(type === 'leaf') { mesh.scale.set(1.5, 0.3, 1.2); }
+  if(type === 'sparkle') { mesh.position.y = Math.random()*1.5; }
+}
+
+function updateParticles(list, time) {
+  list.forEach(p => {
+    const m = p.mesh;
+    switch(p.behavior) {
+      case 'fall': m.position.y -= 0.008; m.position.x += Math.sin(time+p.phase)*0.002; break;
+      case 'fly': m.position.x += Math.cos(time*0.5+p.phase)*0.003; m.position.y += Math.sin(time+p.phase)*0.002; m.position.z += Math.sin(time*0.3+p.phase)*0.003; break;
+      case 'rain': m.position.y -= 0.04; break;
+      case 'wind': m.position.x -= 0.015; m.position.y += Math.sin(time+p.phase)*0.001; break;
+      case 'snow': m.position.y -= 0.006; m.position.x += Math.sin(time+p.phase)*0.001; break;
+      case 'leaf': m.position.y -= 0.006; m.position.x += Math.sin(time*1.5+p.phase)*0.003; m.rotation.y += 0.02; break;
+      case 'sparkle': m.position.y += 0.003; m.position.x += Math.sin(time*2+p.phase)*0.002; break;
+    }
+    if(m.position.y < -1 || m.position.y > 3 || Math.abs(m.position.x) > 2.5) resetParticle(m, p.behavior);
+  });
+}
+
+// --- 8. 灯光 ---
+scene.add(new THREE.AmbientLight(0x1a1a2e, 1.5));
+const moon = new THREE.DirectionalLight(0x4a5a7a, 0.8);
+moon.position.set(5, 10, 5); moon.castShadow = true;
+moon.shadow.mapSize.width = 256; moon.shadow.mapSize.height = 256;
+scene.add(moon);
+
+const spotLights = [];
+globes.forEach(g => {
+  const sl = new THREE.SpotLight(0xffffff, 2, 6, Math.PI/6, 0.5, 1);
+  sl.position.set(g.group.position.x, 5, g.group.position.z);
+  sl.target = g.inner; scene.add(sl); spotLights.push(sl);
+});
+
+// --- 9. 交互系统 ---
+let selectedGlobe = null;
+const promptEl = document.getElementById('prompt');
+const overlay = document.getElementById('overlay');
+const frame = document.getElementById('shelter-frame');
+
+let camAngle = 0, camHeight = 6, camDist = 12;
+let isDragging = false, lastX = 0, lastY = 0;
+
+document.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+document.addEventListener('mouseup', () => isDragging = false);
+document.addEventListener('mousemove', e => {
+  if(!isDragging) return;
+  camAngle -= (e.clientX - lastX) * 0.005;
+  camHeight += (e.clientY - lastY) * 0.02;
+  camHeight = Math.max(2, Math.min(10, camHeight));
+  lastX = e.clientX; lastY = e.clientY;
+  updateCamera();
+});
+document.addEventListener('wheel', e => {
+  camDist += e.deltaY * 0.01;
+  camDist = Math.max(6, Math.min(20, camDist));
+  updateCamera();
+});
+
+function updateCamera() {
+  camera.position.x = Math.sin(camAngle) * camDist;
+  camera.position.z = Math.cos(camAngle) * camDist;
+  camera.position.y = camHeight;
+  camera.lookAt(0, 2, 0);
+}
+
+function checkProximity() {
+  const camPos = camera.position;
+  let closest = null, minDist = Infinity;
+  globes.forEach(g => {
+    const dist = camPos.distanceTo(g.group.position);
+    if(dist < minDist) { minDist = dist; closest = g; }
+  });
+  if(closest && minDist < 5.5) {
+    selectedGlobe = closest;
+    promptEl.textContent = '\u300c ' + closest.data.name + ' \u300d \u6309 E \u8fdb\u5165\u907f\u96be\u6240';
+    promptEl.style.borderColor = closest.data.color;
+    promptEl.classList.add('active');
+  } else {
+    selectedGlobe = null;
+    promptEl.classList.remove('active');
+  }
+}
+
+let inShelter = false;
+document.addEventListener('keydown', e => {
+  if(e.key === 'e' && selectedGlobe && !inShelter) {
+    inShelter = true;
+    frame.src = selectedGlobe.data.file;
+    overlay.style.display = 'block';
+  }
+  if(e.key === 'Escape' && inShelter) {
+    inShelter = false;
+    overlay.style.display = 'none';
+    frame.src = '';
+  }
+});
+
+window.addEventListener('resize', () => {
+  const a = window.innerWidth / window.innerHeight;
+  camera.left = -d*a; camera.right = d*a; camera.top = d; camera.bottom = -d;
+  camera.updateProjectionMatrix();
+});
+
+// --- 10. 动画循环 ---
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  globes.forEach((g, i) => {
+    g.inner.rotation.y = t * 0.15 + i * 0.5;
+    updateParticles(g.particles, t);
+    spotLights[i].intensity = 1.5 + Math.sin(t * 2 + i) * 0.3;
+  });
+  checkProximity();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

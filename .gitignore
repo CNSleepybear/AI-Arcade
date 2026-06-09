@@ -1,0 +1,22 @@
+node_modules/
+dist/
+release/
+.env
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+
+# Large demo video (upload to GitHub Releases instead)
+public/screenshots/demo.mp4
+
+# Third-party arcade games (all under games/ are independently maintained)
+public/games/*
+!public/games/shared/

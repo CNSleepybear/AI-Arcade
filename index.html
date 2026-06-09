@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Arcade</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- ==================== Language Switcher (fixed top-right) ==================== -->
+  <div id="lang-switcher-container"></div>
+
+  <div id="crt-overlay"></div>
+  <div id="crt-vignette"></div>
+
+  <!-- ==================== Loading Screen ==================== -->
+  <div id="loading-screen">
+    <div id="loading-inner">
+      <div id="loading-spinner"></div>
+      <div id="loading-text">AI ARCADE</div>
+      <div id="loading-sub" data-i18n="loading.sub">正在连接深渊网络……</div>
+      <div id="loading-dots"><span>.</span><span>.</span><span>.</span></div>
+    </div>
+  </div>
+
+  <!-- ==================== Title Screen ==================== -->
+  <div id="title-screen" class="hidden">
+    <div id="title-inner">
+      <div id="title-subtitle" data-i18n="title.subtitle">AI 梦境街机馆</div>
+      <h1 id="title-main" data-i18n="title.main">AI ARCADE</h1>
+      <div id="title-underline"></div>
+      <div id="title-stats">
+        <div class="title-stat">
+          <span class="title-stat-label" data-i18n="title.games_unlocked">已解锁游戏</span>
+          <span class="title-stat-val" id="ts-games-unlocked">1</span>/<span id="ts-games-total">3</span>
+        </div>
+        <div class="title-stat">
+          <span class="title-stat-label" data-i18n="title.global_score">全球分数</span>
+          <span class="title-stat-val" id="ts-score">0</span>
+        </div>
+        <div class="title-stat">
+          <span class="title-stat-label" data-i18n="title.memory_shards">记忆碎片</span>
+          <span class="title-stat-val" id="ts-shards">0</span>/3
+        </div>
+      </div>
+      <div id="title-buttons">
+        <button id="title-btn-enter" data-i18n="title.enter_game">进入游戏</button>
+        <button id="title-btn-char" class="hidden" data-i18n="title.select_char">角色选择</button>
+        <button id="title-btn-logout" class="hidden" data-i18n="title.switch_account">切换账号</button>
+      </div>
+      <div id="title-press-enter" data-i18n="title.press_enter">或按 ENTER 进入</div>
+      <div id="title-version" data-i18n="title.version">v1.0.0 · Three.js · Supabase</div>
+    </div>
+  </div>
+  <div id="title-dissolve" class="hidden"></div>
+
+  <!-- ==================== System Boot Animation ==================== -->
+  <div id="system-boot" class="hidden">
+    <div class="boot-noise"></div>
+    <div class="boot-grid"></div>
+    <div class="boot-container" id="bootContainer">
+      <div class="boot-frame">
+        <div class="boot-corner tl"></div>
+        <div class="boot-corner tr"></div>
+        <div class="boot-corner bl"></div>
+        <div class="boot-corner br"></div>
+      </div>
+      <div class="boot-logo">AI ARCADE</div>
+      <div class="boot-subtitle" data-i18n="boot.subtitle">/// THE ABYSS UNIVERSE ///</div>
+      <div class="boot-terminal" id="bootTerminal">
+        <span id="terminalOutput"></span>
+        <span class="boot-cursor" id="bootCursor"></span>
+      </div>
+      <div class="boot-progress-area" id="progressArea">
+        <div class="boot-progress-label">
+          <span data-i18n="boot.sys_init">SYSTEM INITIALIZATION</span>
+          <span id="statusText">STANDBY</span>
+        </div>
+        <div class="boot-progress-track">
+          <div class="boot-progress-fill" id="progressFill"></div>
+        </div>
+        <div class="boot-progress-percent" id="progressPercent">0%</div>
+      </div>
+    </div>
+    <div class="boot-flash" id="bootFlash"></div>
+    <button class="skip-boot" id="skipBootBtn" data-i18n="boot.skip">[ SKIP ]</button>
+  </div>
+
+  <!-- ==================== Login Panel ==================== -->
+  <div id="auth-panel" class="hidden">
+    <div id="auth-panel-inner">
+      <div id="auth-title" data-i18n="auth.title">🔐 登录 / 注册</div>
+      <div id="auth-subtitle" data-i18n="auth.subtitle">想一个名字，密码 4 位以上就行</div>
+      <input id="auth-username" type="text" maxlength="20" data-i18n-placeholder="auth.username_placeholder" placeholder="用户名（字母/数字/下划线）" autocomplete="off" />
+      <input id="auth-password" type="password" maxlength="32" data-i18n-placeholder="auth.password_placeholder" placeholder="密码" autocomplete="off" />
+      <div id="auth-error" class="hidden"></div>
+      <div id="auth-buttons">
+        <button id="auth-btn-login" data-i18n="auth.login">登录</button>
+        <button id="auth-btn-register" data-i18n="auth.register">注册</button>
+      </div>
+      <button id="auth-btn-skip" data-i18n="auth.skip">跳过登录，以游客身份进入</button>
+      <div id="auth-status"></div>
+    </div>
+  </div>
+
+  <div id="app">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud" class="hidden hud-no-pointer">
+      <div id="hud-char-portrait"><img id="hud-avatar" src="" alt="角色头像" /></div>
+      <div id="hud-char-info">
+        <div id="hud-char-name"></div>
+        <div id="hud-char-title"></div>
+        <div id="hud-char-stats">
+          <span class="stat">📡<span id="stat-atk">10</span></span>
+          <span class="stat">🔒<span id="stat-def">10</span></span>
+          <span class="stat">📶<span id="stat-spd">10</span></span>
+          <span class="stat">⚡<span id="stat-crt">5</span></span>
+          <span class="stat">🌀<span id="stat-luck">10</span></span>
+        </div>
+      </div>
+      <div id="hud-score"><span>🪙</span><span id="hud-coins">0</span></div>
+      <div id="hud-score" style="margin-left:6px"><span>🏆</span><span id="hud-global-score">0</span></div>
+      <button id="hud-btn-logout" class="hud-no-pointer" data-i18n="hud.logout">登出</button>
+      <div id="hud-buff" class="hidden"></div>
+    </div>
+
+    <div id="prompt" class="hidden hud-no-pointer"></div>
+
+    <div id="char-select-panel" class="hidden">
+      <h2 data-i18n="char.title">选择角色</h2>
+      <div id="char-select-list"></div>
+      <button id="char-select-close" data-i18n="char.close">关闭</button>
+    </div>
+
+    <!-- ==================== Message Vote Bar ==================== -->
+    <div id="msg-vote-bar" class="hidden">
+      <span id="msg-vote-text">—</span>
+      <span id="msg-vote-author"></span>
+      <button id="msg-vote-like">👍</button>
+      <button id="msg-vote-dislike">👎</button>
+      <button id="msg-vote-close">✕</button>
+    </div>
+
+    <!-- ==================== Message Create Panel ==================== -->
+    <div id="msg-create-panel" class="hidden">
+      <div id="msg-create-inner">
+        <div id="msg-create-title" data-i18n="msg.title">📡 留下霓虹留言</div>
+        <div id="msg-create-categories"></div>
+        <div id="msg-create-templates"></div>
+        <div id="msg-create-error" class="hidden"></div>
+        <div id="msg-create-buttons">
+          <button id="msg-btn-place" data-i18n="msg.place">放置留言</button>
+          <button id="msg-btn-cancel" data-i18n="msg.cancel">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="chat-input-bar" class="hidden">
+      <span id="chat-input-label" data-i18n="chat.input_label">💬 世界聊天</span>
+      <input id="chat-input-field" type="text" maxlength="80" data-i18n-placeholder="chat.placeholder" placeholder="按 Enter 发送，T 开关..." autocomplete="off" />
+    </div>
+
+    <div id="game-container" class="hidden">
+      <div id="game-header">
+        <span id="game-title"></span>
+        <button id="game-exit" data-i18n="game.exit">✕ 退出</button>
+      </div>
+      <iframe id="game-frame" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+
+    <!-- ==================== Chat Phone (hold Tab) ==================== -->
+    <div id="chat-phone" class="hidden">
+      <div id="chat-phone-frame">
+        <div id="chat-phone-notch"></div>
+        <div id="chat-phone-header">
+          <span id="chat-phone-title" data-i18n="chat.title">💬 世界聊天</span>
+          <span id="chat-phone-hint" data-i18n="chat.hint">按住 Tab 查看 · 松开关闭</span>
+        </div>
+        <div id="chat-phone-body">
+          <div id="chat-phone-msgs"></div>
+        </div>
+        <div id="chat-phone-footer">
+          <span data-i18n="chat.footer">T 键发言</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== Fishing UI ==================== -->
+    <div id="fishing-ui" class="hidden">
+      <div id="fishing-inner">
+        <div id="fishing-title" data-i18n="fishing.title">🎣 虚空垂钓</div>
+        <div id="fishing-status" data-i18n="fishing.press_e">按 E 抛竿</div>
+        <div id="fishing-bite" class="hidden">⚡ 有东西上钩了！按 E 收竿！</div>
+        <div id="fishing-result" class="hidden"></div>
+        <div id="fishing-timer"></div>
+      </div>
+    </div>
+
+    <!-- ==================== Bar Menu Panel ==================== -->
+    <div id="bar-menu-panel" class="hidden">
+      <div id="bar-menu-inner">
+        <div id="bar-menu-title" data-i18n="bar.title">🍺 铁锚酒馆 · 酒单</div>
+        <div id="bar-menu-subtitle" data-i18n="bar.subtitle">选一杯，buff 持续 30 秒</div>
+        <div id="bar-menu-drinks"></div>
+        <div id="bar-menu-coins"><span data-i18n="bar.balance">🪙 余额:</span> <span id="bar-menu-balance">0</span></div>
+        <button id="bar-menu-close" data-i18n="bar.close">关闭</button>
+      </div>
+    </div>
+
+    <!-- ==================== Achievement Toast ==================== -->
+    <div id="ach-toast" class="hidden">
+      <span id="ach-toast-icon"></span>
+      <div id="ach-toast-text">
+        <div id="ach-toast-title"></div>
+        <div id="ach-toast-desc"></div>
+      </div>
+    </div>
+    <!-- ==================== Escape Menu (Pause Overlay) ==================== -->
+    <div id="escape-menu" class="hidden">
+      <div id="escape-menu-bg"></div>
+      <div id="escape-menu-panel">
+        <div id="escape-menu-title" data-i18n="escape.title">⏸ 暂停</div>
+        <div id="escape-menu-buttons">
+          <button id="escape-btn-resume" class="escape-menu-btn primary" data-i18n="escape.resume">继续游戏</button>
+          <button id="escape-btn-logout" class="escape-menu-btn" data-i18n="escape.logout">登出 / 切换账号</button>
+          <button id="escape-btn-quit" class="escape-menu-btn danger" data-i18n="escape.quit">退出游戏</button>
+        </div>
+        <div id="escape-menu-hint" data-i18n="escape.hint">按 ESC 继续</div>
+      </div>
+    </div>
+
+    <!-- ==================== E.V.E. AI NPC Phone Panel ==================== -->
+    <div id="eve-phone" class="eve-phone-hidden">
+      <div id="eve-phone-frame">
+        <div id="eve-phone-notch"></div>
+        <div id="eve-phone-header">
+          <div id="eve-avatar-wrap">
+            <canvas id="eve-avatar-canvas" width="48" height="48"></canvas>
+            <img id="eve-avatar-img" src="" alt="E.V.E." style="display:none" />
+            <div id="eve-mode-indicator" class="eve-mode-offline"></div>
+          </div>
+          <div id="eve-name">E.V.E.</div>
+          <button id="eve-settings-gear" data-i18n-title="eve.settings_gear_title" title="设置">⚙</button>
+          <button id="eve-phone-close" data-i18n-title="eve.close_title" title="关闭">✕</button>
+        </div>
+        <div id="eve-phone-body">
+          <div id="eve-bubble" data-i18n="eve.listening">E.V.E. 正在监听街机厅...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== E.V.E. Settings Panel ==================== -->
+    <div id="eve-settings" class="hidden">
+      <div id="eve-settings-inner">
+        <div id="eve-settings-title" data-i18n="eve.settings_title">⚙ E.V.E. 设置</div>
+        <div id="eve-settings-mode">
+          <label class="eve-radio">
+            <input type="radio" name="eve-mode" value="offline" id="eve-mode-offline-radio" checked />
+            <span data-i18n="eve.mode_offline">离线模式（本地状态机）</span>
+          </label>
+          <label class="eve-radio">
+            <input type="radio" name="eve-mode" value="online" id="eve-setting-online" />
+            <span data-i18n="eve.mode_online">在线模式（接入 AI 模型）</span>
+          </label>
+        </div>
+        <div id="eve-settings-api">
+          <div class="eve-setting-note" data-i18n="eve.api_warning">⚠️ API 费用由你承担，Key 存储在本地浏览器</div>
+          <div id="eve-setting-presets" class="hidden">
+            <label data-i18n="eve.preset_label">快速选择提供商</label>
+            <div id="eve-preset-list"></div>
+          </div>
+          <div id="eve-setting-url-group" class="hidden">
+            <label data-i18n="eve.api_url">API 地址</label>
+            <input id="eve-setting-url" type="text" placeholder="https://api.deepseek.com/v1/chat/completions" />
+          </div>
+          <div id="eve-setting-key-group" class="hidden">
+            <label data-i18n="eve.api_key">API Key</label>
+            <input id="eve-setting-key" type="password" placeholder="sk-..." />
+          </div>
+          <div id="eve-setting-model-group" class="hidden">
+            <label data-i18n="eve.model_name">模型名称</label>
+            <input id="eve-setting-model" type="text" placeholder="deepseek-v4-flash" />
+          </div>
+        </div>
+        <div id="eve-settings-buttons">
+          <button id="eve-setting-test" data-i18n="eve.test">测试连接</button>
+          <button id="eve-setting-save" class="eve-btn-primary" data-i18n="eve.save">保存</button>
+          <button id="eve-setting-cancel" data-i18n="eve.cancel">取消</button>
+        </div>
+        <div id="eve-settings-game-ai">
+          <button id="eve-game-ai"><span data-i18n="eve.game_ai">🎮 游戏 AI 模型</span> <span class="eve-locked-badge" data-i18n="eve.game_ai_locked">🔒 正在努力部署升级中...</span></button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+
+  <!-- ==================== Boot Animation Script ==================== -->
+  <script>
+    (function() {
+      const systemBoot = document.getElementById('system-boot');
+      const bootContainer = document.getElementById('bootContainer');
+      const terminalOutput = document.getElementById('terminalOutput');
+      const bootCursor = document.getElementById('bootCursor');
+      const progressFill = document.getElementById('progressFill');
+      const progressPercent = document.getElementById('progressPercent');
+      const statusText = document.getElementById('statusText');
+      const bootFlash = document.getElementById('bootFlash');
+      const skipBtn = document.getElementById('skipBootBtn');
+
+      // Hardcoded cyberpunk boot lines (language-independent tech jargon)
+      const BOOT_LINES = [
+        '/// AI ARCADE SYSTEM v1.0 ///',
+        '> INITIALIZING: Deep Abyss Network...',
+        '> CONNECTING: Game Instance Cluster...',
+        '> LOADING: Neural Juice Pipeline...',
+        '> MOUNTING: Roguelike Core Engine...',
+        '> SYNC: Player Preference Matrix...',
+        '> WARMING: Neon Void Shaders...',
+        '> STATUS: ALL SYSTEMS NOMINAL'
+      ];
+
+      let timers = [];
+      let isBooting = false;
+      let _animationDone = false;  // typewriter + bar animation finished
+      let _arcadeReady = false;    // main.js signaled ready
+
+      function clearTimers() {
+        timers.forEach(t => clearTimeout(t));
+        timers = [];
+      }
+
+      function checkAndFinish() {
+        if (_animationDone && _arcadeReady && isBooting) {
+          doFinishBoot();
+        }
+      }
+
+      function startTerminal() {
+        let lineIndex = 0;
+        terminalOutput.innerHTML = '';
+        let _loadingStarted = false;
+
+        function typeLine() {
+          if (lineIndex >= BOOT_LINES.length || !isBooting) {
+            // All lines done — make sure loading is running
+            if (isBooting && !_loadingStarted) startLoading();
+            return;
+          }
+          // Start progress bar after first 2 lines, while remaining text types
+          if (!_loadingStarted && lineIndex >= 2) {
+            _loadingStarted = true;
+            startLoading();
+          }
+          const line = BOOT_LINES[lineIndex];
+          const div = document.createElement('div');
+          div.className = 'boot-line';
+          div.style.animationDelay = '0s';
+          div.textContent = '';
+          terminalOutput.appendChild(div);
+
+          let c = 0;
+          function typeChar() {
+            if (!isBooting) return;
+            if (c < line.length) {
+              div.textContent += line[c];
+              c++;
+              const t = setTimeout(typeChar, 18 + Math.random() * 25);
+              timers.push(t);
+            } else {
+              lineIndex++;
+              const t = setTimeout(typeLine, 80);
+              timers.push(t);
+            }
+          }
+          typeChar();
+        }
+        typeLine();
+      }
+
+      function startLoading() {
+        statusText.textContent = 'LOADING';
+        let _displayedProgress = 0;
+        const interval = 50;
+        const totalLines = BOOT_LINES.length;
+        // Typewriter drives first ~70%, real loading the rest
+        const typewriterShare = 70;
+
+        function updateProgress() {
+          if (!isBooting) return;
+
+          // --- Target from typewriter progress ---
+          // Count how many lines have been fully typed
+          const typedLines = terminalOutput.querySelectorAll('.boot-line').length;
+          const lastLine = terminalOutput.lastChild;
+          let lastLineProgress = 0;
+          if (lastLine && lastLine.textContent) {
+            const currentLineIdx = typedLines - 1;
+            const targetLine = BOOT_LINES[currentLineIdx] || '';
+            if (targetLine.length > 0) {
+              lastLineProgress = Math.min(1, lastLine.textContent.length / targetLine.length);
+            }
+          }
+          // Fraction through all lines: fully typed lines + partial current line
+          const typewriterFrac = (typedLines - 1 + lastLineProgress) / totalLines;
+          const typewriterTarget = Math.floor(typewriterFrac * typewriterShare);
+
+          // --- Target from real loading ---
+          const realProgress = window.__arcadeProgress;
+          let realTarget = 0;
+          if (typeof realProgress === 'number' && realProgress > 0) {
+            // Map real progress (0-100) to remaining share (typewriterShare to 100)
+            realTarget = typewriterShare + (realProgress / 100) * (100 - typewriterShare);
+          }
+
+          // Bar is driven by typewriter; real loading only pulls ahead if ready
+          let target = typewriterTarget;
+          if (_arcadeReady) {
+            // Real loading done: allow typewriter to finish, then go to 100
+            target = Math.max(typewriterTarget, realTarget);
+          }
+          target = Math.min(target, 99);
+
+          // Smooth interpolate
+          const lerpSpeed = 0.12;
+          _displayedProgress += (target - _displayedProgress) * lerpSpeed;
+          if (Math.abs(target - _displayedProgress) < 0.5) {
+            _displayedProgress = target;
+          }
+          // Only snap to 100 when both typewriter AND real loading are done
+          if (_arcadeReady && typewriterFrac >= 1 && _displayedProgress > 98) {
+            _displayedProgress = 100;
+          }
+
+          const display = Math.min(100, Math.floor(_displayedProgress));
+          progressFill.style.width = display + '%';
+          progressPercent.textContent = display + '%';
+
+          if (display >= 100) {
+            progressFill.style.width = '100%';
+            progressPercent.textContent = '100%';
+            statusText.textContent = 'READY';
+            _animationDone = true;
+            checkAndFinish();
+            return;
+          }
+
+          const t = setTimeout(updateProgress, interval);
+          timers.push(t);
+        }
+        updateProgress();
+      }
+
+      function doFinishBoot() {
+        isBooting = false;
+        clearTimers();
+        bootCursor.style.display = 'none';
+
+        const t1 = setTimeout(() => {
+          bootFlash.classList.add('trigger');
+          bootContainer.classList.add('boot-exit');
+
+          const t2 = setTimeout(() => {
+            systemBoot.classList.add('hidden');
+            bootFlash.classList.remove('trigger');
+            bootContainer.classList.remove('boot-exit');
+            const ls = document.getElementById('loading-screen');
+            if (ls && !ls.classList.contains('hidden')) ls.classList.add('fade-out');
+          }, 600);
+          timers.push(t2);
+        }, 400);
+        timers.push(t1);
+      }
+
+      function skip() {
+        isBooting = false;
+        clearTimers();
+        systemBoot.classList.add('hidden');
+        const ls = document.getElementById('loading-screen');
+        if (ls && !ls.classList.contains('hidden')) ls.classList.add('fade-out');
+      }
+
+      // Called by main.js when fully loaded
+      window.__signalArcadeReady = function() {
+        _arcadeReady = true;
+        window.__arcadeProgress = 100;
+        checkAndFinish();
+      };
+
+      skipBtn.addEventListener('click', skip);
+
+      // Auto-start on page load
+      isBooting = true;
+      systemBoot.classList.remove('hidden');
+      const t = setTimeout(() => startTerminal(), 300);
+      timers.push(t);
+    })();
+  </script>
+</body>
+</html>

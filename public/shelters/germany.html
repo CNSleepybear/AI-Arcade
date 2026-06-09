@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL 法式浪漫像素避难所</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0d0a14;
+            font-family: "Georgia", serif; /* 用古典衬线体呼应法式优雅 */
+        }
+        /* 核心黑科技：降采样 Canvas 像素强制锐化，拒绝平滑模糊 */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #524663;
+            font-size: 11px;
+            letter-spacing: 2px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        .title-panel {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .title-panel h2 {
+            color: #d1c2e0;
+            font-size: 15px;
+            letter-spacing: 5px;
+            font-weight: 400;
+            margin-bottom: 6px;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+        }
+        .title-panel p {
+            color: #5c4d70;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">PARISIAN LO-FI MODE // CANVAS: 400x300</div>
+    <div class="title-panel">
+        <h2>「 左岸微醺，梧桐夜落 」</h2>
+        <p>CAFÉ DE PIXEL // 逻辑已闭环，指针已归零，喝完这杯就晚安</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- 1. 初始化 WebGL 与超低像素画布设置 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0d0a14); // 带有法式灰调的浪漫深紫黑
+        scene.fog = new THREE.FogExp2(0x0d0a14, 0.025);
+
+        const RENDER_W = 400;
+        const RENDER_H = 300;
+
+        // 正交相机保持 2.5D 微缩八音盒质感
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewSize = 8.5;
+        const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 1, 1000);
+        camera.position.set(12, 9, 12);
+        camera.lookAt(0, 1.0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(RENDER_W, RENDER_H, false);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.BasicShadowMap; // 纯硬阴影
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. 法式经典色调材质调色板 ---
+        const palette = {
+            street: new THREE.MeshLambertMaterial({ color: 0x1f1a24, flatShading: true }),     // 巴黎石板路
+            cafeWall: new THREE.MeshLambertMaterial({ color: 0xded0bc, flatShading: true }),   // 奶油色复古墙面
+            parisGreen: new THREE.MeshLambertMaterial({ color: 0x1c3127, flatShading: true }), // 经典法式深绿铁艺
+            awningBlue: new THREE.MeshLambertMaterial({ color: 0x1b2d4a, flatShading: true }), // 雨篷海军蓝
+            awningWhite: new THREE.MeshLambertMaterial({ color: 0xeae5da, flatShading: true }),// 雨篷复古白
+            woodDark: new THREE.MeshLambertMaterial({ color: 0x3d271d, flatShading: true }),   // 咖啡馆木门窗
+            warmGlow: new THREE.MeshBasicMaterial({ color: 0xffdf9e }),                        // 橱窗与路灯暖香槟光
+            leafGold: new THREE.MeshLambertMaterial({ color: 0xc4873b, flatShading: true })    // 梧桐枯黄落叶
+        };
+
+        const world = new THREE.Group();
+        scene.add(world);
+
+        // --- 3. 构造法式体素模型 (Voxel Construction) ---
+
+        // 石板路地基
+        const streetMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 1.5, 10), palette.street);
+        streetMesh.position.y = -0.75;
+        streetMesh.receiveShadow = true;
+        world.add(streetMesh);
+
+        // 咖啡馆主体建筑切片 (The Bistro Facade)
+        const cafe = new THREE.Group();
+        
+        // 主墙面
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(5.0, 5.0, 3.5), palette.cafeWall);
+        wall.position.y = 2.5;
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        cafe.add(wall);
+
+        // 深色木质底座护墙板
+        const wainscot = new THREE.Mesh(new THREE.BoxGeometry(5.1, 0.8, 3.6), palette.woodDark);
+        wainscot.position.y = 0.4;
+        wainscot.castShadow = true;
+        cafe.add(wainscot);
+
+        // 咖啡馆玻璃大橱窗 (透出温馨香槟光)
+        const windowGlow = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 0.1), palette.warmGlow);
+        windowGlow.position.set(0.6, 1.8, 1.76);
+        cafe.add(windowGlow);
+
+        // 橱窗木质像素网格边框
+        const windowFrame = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.7, 0.05), palette.woodDark);
+        windowFrame.position.set(0.6, 1.8, 1.78);
+        cafe.add(windowFrame);
+
+        // 咖啡馆木门
+        const door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.1, 0.1), palette.woodDark);
+        door.position.set(-1.4, 1.05, 1.76);
+        door.castShadow = true;
+        cafe.add(door);
+
+        // 核心亮点：蓝白相间的法式像素折叠雨篷 (Striped Awning)
+        const awningGroup = new THREE.Group();
+        const stripeWidth = 0.35;
+        const stripeCount = 8;
+        // 循环生成交替颜色的条纹方块
+        for(let i = 0; i < stripeCount; i++) {
+            const mat = (i % 2 === 0) ? palette.awningBlue : palette.awningWhite;
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(stripeWidth, 0.2, 1.8), mat);
+            // 依次排列，并做出向前倾斜的法式雨篷角度
+            stripe.position.set(-1.22 + (i * stripeWidth), 3.2, 2.4);
+            stripe.rotation.x = 0.3; // 倾斜角
+            stripe.castShadow = true;
+            awningGroup.add(stripe);
+        }
+        cafe.add(awningGroup);
+
+        // 整体往后错位摆放
+        cafe.position.set(-2, 0, -2);
+        world.add(cafe);
+
+        // 经典的巴黎铁艺双头路灯 (Parisian Street Lamp)
+        const lamp = new THREE.Group();
+        
+        // 主灯柱
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.4, 0.16), palette.parisGreen);
+        pole.position.y = 2.2;
+        pole.castShadow = true;
+        lamp.add(pole);
+
+        const baseJoint = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.4), palette.parisGreen);
+        baseJoint.position.y = 0.45;
+        lamp.add(baseJoint);
+
+        // 顶部的弧形对称双灯头支架
+        const cross = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.15, 0.16), palette.parisGreen);
+        cross.position.y = 4.1;
+        lamp.add(cross);
+
+        function createLampCap(isLeft) {
+            const head = new THREE.Group();
+            const glow = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.4, 0.35), palette.warmGlow);
+            glow.position.y = -0.2;
+            const topCap = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.12, 0.45), palette.parisGreen);
+            topCap.position.y = 0.05;
+            
+            head.add(glow, topCap);
+            head.position.set(isLeft ? -0.6 : 0.6, 4.1, 0);
+            return head;
+        }
+        lamp.add(createLampCap(true), createLampCap(false));
+        
+        lamp.position.set(2.5, 0, 1.5);
+        world.add(lamp);
+
+        // 街头露天像素小圆桌与藤椅 (Bistro Table & Chair)
+        const furniture = new THREE.Group();
+        
+        // 像素圆桌 (用薄方块替代)
+        const tableTop = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 1.1), palette.parisGreen);
+        tableTop.position.y = 0.8;
+        tableTop.castShadow = true;
+        const tableLeg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), palette.parisGreen);
+        tableLeg.position.y = 0.4;
+        furniture.add(tableTop, tableLeg);
+
+        // 一把歪着放的小藤椅
+        const chair = new THREE.Group();
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.06, 0.55), palette.woodDark);
+        seat.position.y = 0.45;
+        seat.castShadow = true;
+        
+        const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.06), palette.parisGreen);
+        backrest.position.set(0, 0.72, -0.25);
+        backrest.castShadow = true;
+
+        // 4根细椅腿
+        for(let x of [-0.23, 0.23]) {
+            for(let z of [-0.23, 0.23]) {
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.06), palette.parisGreen);
+                leg.position.set(x, 0.225, z);
+                chair.add(leg);
+            }
+        }
+        chair.add(seat, backrest);
+        chair.position.set(0.6, 0, -0.8);
+        chair.rotation.y = 0.5; // 随意的法式风情旋转
+        furniture.add(chair);
+
+        furniture.position.set(0.8, 0, 1.8);
+        world.add(furniture);
+
+        // --- 4. 动态法国梧桐落叶粒子系统 (Parisian Falling Leaves) ---
+        const leafCount = 28;
+        const leaves = [];
+        const leafGeo = new THREE.BoxGeometry(0.16, 0.04, 0.12); // 扁平像素落叶
+
+        for (let i = 0; i < leafCount; i++) {
+            const leaf = new THREE.Mesh(leafGeo, palette.leafGold);
+            resetLeaf(leaf);
+            // 随机分布初始高度，避免扎堆
+            leaf.position.y = Math.random() * 6 + 0.2;
+            world.add(leaf);
+            leaves.push(leaf);
+        }
+
+        function resetLeaf(mesh) {
+            mesh.position.x = Math.random() * 10 - 5;
+            mesh.position.y = 6 + Math.random() * 2;
+            mesh.position.z = Math.random() * 10 - 5;
+            mesh.userData = {
+                speedY: 0.015 + Math.random() * 0.015,
+                swaySpeed: 1.5 + Math.random() * 2.0,
+                swayAmp: 0.01 + Math.random() * 0.015,
+                rotSpeed: 0.01 + Math.random() * 0.02,
+                seed: Math.random() * 100
+            };
+        }
+
+        // --- 5. 光影环境轴 (昏暗夜色与香槟金光的华丽冲撞) ---
+        const ambientLight = new THREE.AmbientLight(0x120e24, 2.0); // 浓郁的黄昏/深夜基调
+        scene.add(ambientLight);
+
+        // 铁艺路灯投射下的强点光源
+        const lampLight = new THREE.PointLight(0xffdf9e, 3.2, 7);
+        lampLight.position.set(2.5, 3.9, 1.5);
+        lampLight.castShadow = true;
+        lampLight.shadow.mapSize.width = 256;
+        world.add(lampLight);
+
+        // 咖啡馆内部溢出来的温馨大范围光
+        const cafeLight = new THREE.PointLight(0xffb566, 2.0, 6);
+        cafeLight.position.set(-1.4, 1.8, 0.5);
+        world.add(cafeLight);
+
+        // --- 6. 实时渲染与落叶律动更新 ---
+        const clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            const elapsed = clock.getElapsedTime();
+
+            // 景观像法式精致甜点盘一样，在主轴上极其缓慢地自转
+            world.rotation.y = elapsed * 0.045;
+
+            // 模拟深夜酒馆和路灯特有的微醺呼吸感 (Warm Light Breathing)
+            lampLight.intensity = 3.0 + Math.sin(elapsed * 2.5) * 0.2;
+            cafeLight.intensity = 1.9 + Math.cos(elapsed * 1.8) * 0.15;
+
+            // 梧桐落叶的飘落与“打旋儿”物理逻辑
+            leaves.forEach(leaf => {
+                const ud = leaf.userData;
+                leaf.position.y -= ud.speedY;
+                
+                // 核心：利用正弦函数让落叶在下落时左右晃动、打转，模拟被风卷起的效果
+                leaf.position.x += Math.sin(elapsed * ud.swaySpeed + ud.seed) * ud.swayAmp;
+                leaf.position.z += Math.cos(elapsed * ud.swaySpeed + ud.seed) * (ud.swayAmp * 0.5);
+                
+                leaf.rotation.x += ud.rotSpeed;
+                leaf.rotation.y += ud.rotSpeed * 0.5;
+
+                // 触地或者飞出边界则重置
+                if (leaf.position.y < 0.15) {
+                    resetLeaf(leaf);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // 视口弹性自适应
+        window.addEventListener('resize', () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -viewSize * aspect;
+            camera.right = viewSize * aspect;
+            camera.top = viewSize;
+            camera.bottom = -viewSize;
+            camera.updateProjectionMatrix();
+        });
+
+        // 塞纳河畔安全区，启动！
+        renderLoop();
+    </script>
+</body>
+</html>

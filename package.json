@@ -1,0 +1,46 @@
+{
+  "name": "ai-arcade",
+  "version": "1.0.0",
+  "description": "AI Arcade — 深渊行者游戏厅，Three.js 3D街机厅 + 多款小游戏",
+  "author": "AI Arcade Team",
+  "private": true,
+  "type": "module",
+  "main": "electron-main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "vite build && electron .",
+    "electron:build": "vite build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "vite": "^6.0.0",
+    "vite-plugin-javascript-obfuscator": "^3.1.0"
+  },
+  "build": {
+    "appId": "com.aiarcade.app",
+    "productName": "AI Arcade",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "public/favicon.ico"
+    },
+    "portable": {
+      "artifactName": "AI-Arcade-${version}.exe"
+    }
+  }
+}

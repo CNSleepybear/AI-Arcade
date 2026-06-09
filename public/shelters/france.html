@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL 德式严谨像素避难所</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #06080c;
+            font-family: 'Courier New', Courier, monospace; /* 用工业感等宽体 */
+        }
+        /* 极限降采样像素锐化，拒绝任何平滑模糊，100%硬边缘 */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #3b4856;
+            font-size: 11px;
+            letter-spacing: 2px;
+            pointer-events: none;
+        }
+        .title-panel {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .title-panel h2 {
+            color: #adbac7;
+            font-size: 15px;
+            letter-spacing: 5px;
+            font-weight: 400;
+            margin-bottom: 5px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+        .title-panel p {
+            color: #475569;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">GERMANIC SYSTEM MODE // RESOLUTION: 400x300</div>
+    <div class="title-panel">
+        <h2>「 森林冬夜，严谨秩序 」</h2>
+        <p>DAS BIERHAUS // 核心架构已冻结，无异常重构，安心入眠</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- 1. 基础场景与严谨的正交相机设置 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x06080c); // 深邃寒冷的极夜黑蓝
+        scene.fog = new THREE.FogExp2(0x06080c, 0.03);
+
+        const RENDER_W = 400;
+        const RENDER_H = 300;
+
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewSize = 8.5;
+        const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 1, 1000);
+        camera.position.set(13, 10, 13);
+        camera.lookAt(0, 1.2, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(RENDER_W, RENDER_H, false);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.BasicShadowMap; // 标志性的机械硬阴影
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. 德式黑森林传统调色板 ---
+        const palette = {
+            ground: new THREE.MeshLambertMaterial({ color: 0x12161f, flatShading: true }),      // 冻土基座
+            plaster: new THREE.MeshLambertMaterial({ color: 0xe6e2d8, flatShading: true }),     // 桁架墙面（象牙白抹灰）
+            timber: new THREE.MeshLambertMaterial({ color: 0x2b1a11, flatShading: true }),      // 结构木梁（深黑褐）
+            roofRed: new THREE.MeshLambertMaterial({ color: 0x7a2b22, flatShading: true }),     // 陡峭陶土瓦红
+            pineGreen: new THREE.MeshLambertMaterial({ color: 0x13261b, flatShading: true }),   // 黑森林针叶绿
+            beerGold: new THREE.MeshBasicMaterial({ color: 0xffaa00 }),                         // 酒馆内部温暖麦芽黄
+            snowWhite: new THREE.MeshBasicMaterial({ color: 0xffffff })                         // 纯白晶格雪花
+        };
+
+        const world = new THREE.Group();
+        scene.add(world);
+
+        // --- 3. 构建德式体素模型 (Voxel Construction) ---
+
+        // 基础冻土地台
+        const groundMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 1.5, 10), palette.ground);
+        groundMesh.position.y = -0.75;
+        groundMesh.receiveShadow = true;
+        world.add(groundMesh);
+
+        // 经典的德式桁架小屋 (The Fachwerkhaus Tavern)
+        const house = new THREE.Group();
+        
+        // 抹灰主墙体
+        const wallH = 2.6;
+        const mainWall = new THREE.Mesh(new THREE.BoxGeometry(3.6, wallH, 3.6), palette.plaster);
+        mainWall.position.y = wallH / 2;
+        mainWall.castShadow = true;
+        mainWall.receiveShadow = true;
+        house.add(mainWall);
+
+        // 【核心灵魂】桁架结构木梁（Timber Framing）
+        const beamThick = 0.12;
+        // 四角垂直主柱
+        const corners = [{x:1.8, z:1.8}, {x:-1.8, z:1.8}, {x:1.8, z:-1.8}, {x:-1.8, z:-1.8}];
+        corners.forEach(c => {
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(beamThick, wallH, beamThick), palette.timber);
+            pillar.position.set(c.x, wallH/2, c.z);
+            house.add(pillar);
+        });
+        // 水平腰梁与顶梁
+        for(let yPos of [0.1, 1.3, 2.5]) {
+            const beamX = new THREE.Mesh(new THREE.BoxGeometry(3.7, beamThick, beamThick), palette.timber);
+            beamX.position.set(0, yPos, 1.8);
+            const beamX_back = beamX.clone(); beamX_back.position.z = -1.8;
+            
+            const beamZ = new THREE.Mesh(new THREE.BoxGeometry(beamThick, beamThick, 3.7), palette.timber);
+            beamZ.position.set(1.8, yPos, 0);
+            const beamZ_back = beamZ.clone(); beamZ_back.position.x = -1.8;
+
+            house.add(beamX, beamX_back, beamZ, beamZ_back);
+        }
+        // 德式标志性的 X 型或斜向支撑梁 (Diagonal Braces)
+        function createBrace(x, z, rotZ) {
+            const brace = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 0.1), palette.timber);
+            brace.position.set(x, 0.7, z);
+            brace.rotation.z = rotZ;
+            house.add(brace);
+        }
+        createBrace(1.2, 1.81, 0.6);   createBrace(-1.2, 1.81, -0.6);
+        createBrace(1.81, 1.2, 0); // 侧面简化支撑
+        createBrace(-1.81, -1.2, 0);
+
+        // 陡峭的德式盖檐双坡屋顶 (Steep Germanic Gable Roof)
+        // 采用严谨的逐层递减箱体堆叠法，完美还原像素阶梯感
+        const roofLayers = [
+            {w: 4.2, h: 0.35, d: 4.0, y: 2.75},
+            {w: 3.4, h: 0.35, d: 4.0, y: 3.10},
+            {w: 2.6, h: 0.35, d: 4.0, y: 3.45},
+            {w: 1.8, h: 0.35, d: 4.0, y: 3.80},
+            {w: 1.0, h: 0.35, d: 4.0, y: 4.15},
+            {w: 0.3, h: 0.35, d: 4.0, y: 4.50}
+        ];
+        roofLayers.forEach(layer => {
+            const rBox = new THREE.Mesh(new THREE.BoxGeometry(layer.w, layer.h, layer.d), palette.roofRed);
+            rBox.position.set(0, layer.y, 0);
+            rBox.castShadow = true;
+            house.add(rBox);
+        });
+
+        // 烟囱 (Chimney)
+        const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.2, 0.5), palette.timber);
+        chimney.position.set(1.0, 4.2, -0.8);
+        chimney.castShadow = true;
+        house.add(chimney);
+
+        // 暖光凸窗 (Windows透出麦芽色极暖光)
+        const windowGlow = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.1), palette.beerGold);
+        windowGlow.position.set(0, 1.4, 1.82);
+        house.add(windowGlow);
+
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.3, 0.1), palette.timber);
+        door.position.set(-1.0, 0.65, 1.82);
+        house.add(door);
+
+        house.position.set(-1.5, 0, -1.0);
+        world.add(house);
+
+        // 严谨几何美学的黑森林冷杉树群 (Voxel Pine Trees)
+        function createGermanPine(px, pz, numLayers) {
+            const tree = new THREE.Group();
+            
+            // 树干
+            const trunkH = 1.0 + Math.random() * 0.5;
+            const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.25, trunkH, 0.25), palette.timber);
+            trunk.position.y = trunkH / 2;
+            trunk.castShadow = true;
+            tree.add(trunk);
+
+            // 严格对称的塔状针叶层
+            let currentY = trunkH - 0.2;
+            let baseWidth = 1.8;
+            for(let i=0; i<numLayers; i++) {
+                const layerH = 0.5;
+                const leaves = new THREE.Mesh(new THREE.BoxGeometry(baseWidth, layerH, baseWidth), palette.pineGreen);
+                leaves.position.y = currentY + layerH/2;
+                leaves.castShadow = true;
+                tree.add(leaves);
+                
+                currentY += layerH - 0.12; // 层叠收紧
+                baseWidth -= 0.4;          // 逐层向上等差递减
+            }
+            tree.position.set(px, 0, pz);
+            return tree;
+        }
+
+        // 严格环绕在木屋后侧
+        world.add(createGermanPine(2.8, -2.5, 4));
+        world.add(createGermanPine(1.2, -3.2, 5));
+        world.add(createGermanPine(3.2, -0.5, 3));
+        world.add(createGermanPine(-3.5, 2.5, 4));
+
+        // --- 4. 动态严谨冬夜落雪系统 (German Voxel Snow) ---
+        const flakeCount = 45;
+        const snowflakes = [];
+        const snowGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08); // 纯粹的矩阵像素点
+
+        for (let i = 0; i < flakeCount; i++) {
+            const flake = new THREE.Mesh(snowGeo, palette.snowWhite);
+            resetFlake(flake);
+            flake.position.y = Math.random() * 7; // 预先随机铺开高度
+            world.add(flake);
+            snowflakes.push(flake);
+        }
+
+        function resetFlake(mesh) {
+            mesh.position.x = Math.random() * 10 - 5;
+            mesh.position.y = 7 + Math.random() * 1.5;
+            mesh.position.z = Math.random() * 10 - 5;
+            mesh.userData = {
+                speedY: 0.02 + Math.random() * 0.015, // 德式落雪：匀速、沉稳、没有过大的飘荡
+                driftX: (Math.random() - 0.5) * 0.005
+            };
+        }
+
+        // --- 5. 光影环境轴 (极夜深蓝与酒馆暖金的重度对冲) ---
+        const ambientLight = new THREE.AmbientLight(0x0c121d, 2.2); // 全局冷调泛光
+        scene.add(ambientLight);
+
+        // 犹如工业铸铁壁灯投射出的下倾式硬点光源
+        const tavernLight = new THREE.PointLight(0xff9900, 3.5, 6);
+        tavernLight.position.set(-1.5, 1.4, 2.5);
+        tavernLight.castShadow = true;
+        tavernLight.shadow.mapSize.width = 256; // 维持硬朗像素阴影
+        world.add(tavernLight);
+
+        // 月光（冷色调）
+        const moonLight = new THREE.DirectionalLight(0x405570, 0.8);
+        moonLight.position.set(-5, 10, -5);
+        scene.add(moonLight);
+
+        // --- 6. 核心循环轴与严谨逻辑控制 ---
+        const clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+
+            const elapsed = clock.getElapsedTime();
+
+            // 景观整体以绝对稳定的角速度缓慢自转（如同精密钟表底盘）
+            world.rotation.y = elapsed * 0.035;
+
+            // 模拟壁灯火光的低频平稳闪烁（极其克制的阻尼系数）
+            tavernLight.intensity = 3.2 + Math.sin(elapsed * 3.0) * 0.2;
+
+            // 严谨的晶格下雪物理法则
+            snowflakes.forEach(flake => {
+                flake.position.y -= flake.userData.speedY;
+                flake.position.x += flake.userData.driftX;
+
+                // 触地边界判断
+                if (flake.position.y < 0.15) {
+                    resetFlake(flake);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // 保持视口刚性自适应
+        window.addEventListener('resize', () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -viewSize * aspect;
+            camera.right = viewSize * aspect;
+            camera.top = viewSize;
+            camera.bottom = -viewSize;
+            camera.updateProjectionMatrix();
+        });
+
+        // 德意志冬夜秩序模块，启动！
+        renderLoop();
+    </script>
+</body>
+</html>
