@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StarryNightSky } from './StarryNightSky.js';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
 
 /**
@@ -155,14 +156,14 @@ export class VoxelRooftop {
     const group = new THREE.Group();
     group.name = 'telescope';
 
-    // Base — thickened to 3x2x3
+    // Low plinth keeps the optical axis at a comfortable standing eye height.
     const baseMat = new THREE.MeshStandardMaterial({
       color: 0x445566,
       roughness: 0.4,
       metalness: 0.7
     });
-    const base = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3), baseMat);
-    base.position.y = 1;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(.9, .16, .9), baseMat);
+    base.position.y = .08;
     base.castShadow = true;
     base.receiveShadow = true;
     group.add(base);
@@ -174,15 +175,15 @@ export class VoxelRooftop {
       metalness: 0.8
     });
     const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.3, 0.4, 0.8, 8),
+      new THREE.CylinderGeometry(0.13, 0.2, 1.05, 8),
       pedMat
     );
-    pedestal.position.y = 2.4;
+    pedestal.position.y = .67;
     group.add(pedestal);
 
     // Telescope tube — angled upward
     const tubeGroup = new THREE.Group();
-    tubeGroup.position.y = 2.9;
+    tubeGroup.position.y = 1.38;
 
     const tubeMat = new THREE.MeshStandardMaterial({
       color: 0x334455,
@@ -190,7 +191,7 @@ export class VoxelRooftop {
       metalness: 0.8
     });
     const tube = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.15, 0.2, 2.5, 8),
+      new THREE.CylinderGeometry(0.15, 0.2, 1.8, 12),
       tubeMat
     );
     tube.rotation.z = Math.PI / 2;
@@ -207,7 +208,7 @@ export class VoxelRooftop {
       hoodMat
     );
     hood.rotation.z = Math.PI / 2;
-    hood.position.x = 1.35;
+    hood.position.x = .98;
     tubeGroup.add(hood);
 
     // Eyepiece
@@ -221,13 +222,15 @@ export class VoxelRooftop {
       eyeMat
     );
     eyepiece.rotation.z = Math.PI / 2;
-    eyepiece.position.x = -1.35;
+    eyepiece.position.x = -.98;
     tubeGroup.add(eyepiece);
 
-    tubeGroup.rotation.x = -0.5; // angled up toward sky
+    tubeGroup.rotation.z = .4;
     group.add(tubeGroup);
 
-    group.position.set(0, 0, -2);
+    group.position.set(-1, 0, -1.2);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(.17, 16), new THREE.MeshBasicMaterial({color:0x82c6d4,transparent:true,opacity:.7}));
+    lens.rotation.y=Math.PI/2;lens.position.x=1.14;tubeGroup.add(lens);
     this.group.add(group);
   }
 
@@ -397,215 +400,12 @@ export class VoxelRooftop {
 
   // ==================== Starry Sky (Van Gogh Style) ====================
   _buildStarrySky() {
-    const geo = new THREE.SphereGeometry(55, 48, 36);
-
-    const uniforms = {
-      uTime: { value: 0 },
-      uBrightness: { value: 0.75 }
-    };
-
-    const mat = new THREE.ShaderMaterial({
-      uniforms,
-      vertexShader: /* glsl */`
-        varying vec3 vWorldPos;
-        varying vec3 vNormal;
-        void main() {
-          vec4 worldPos = modelMatrix * vec4(position, 1.0);
-          vWorldPos = worldPos.xyz;
-          vNormal = normalize(mat3(modelMatrix) * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */`
-        varying vec3 vWorldPos;
-        varying vec3 vNormal;
-        uniform float uTime;
-        uniform float uBrightness;
-
-        // Hash function for star placement
-        float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-
-        // 2D rotation
-        mat2 rot2(float a) {
-          float s = sin(a), c = cos(a);
-          return mat2(c, -s, s, c);
-        }
-
-        // Smooth noise for nebula
-        float noise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
-          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-        }
-
-        float fbm(vec2 p) {
-          float v = 0.0, a = 0.5;
-          mat2 m = mat2(0.8, 0.6, -0.6, 0.8);
-          for (int i = 0; i < 4; i++) {
-            v += a * noise(p);
-            p = m * p * 2.0 + float(i) * 0.7;
-            a *= 0.5;
-          }
-          return v;
-        }
-
-        void main() {
-          // Convert world position to spherical direction
-          vec3 dir = normalize(vWorldPos);
-
-          // Sky UV from direction
-          float theta = atan(dir.z, dir.x); // azimuth [-PI, PI]
-          float phi = acos(dir.y);           // polar [0, PI]
-
-          vec2 uv = vec2(theta / (2.0 * 3.14159265) + 0.5, phi / 3.14159265);
-
-          // ===== BASE SKY: Deep indigo =====
-          vec3 baseColor = vec3(0.03, 0.03, 0.10);
-
-          // Horizon glow (subtle dark blue)
-          float horizonGlow = smoothstep(0.0, 0.5, abs(phi - 1.57));
-          baseColor += vec3(0.02, 0.02, 0.06) * (1.0 - horizonGlow);
-
-          vec3 color = baseColor;
-
-          // ===== VORTEX / SWIRL (Van Gogh style) =====
-          vec2 suv = uv * 2.0 - 1.0;
-          suv.x *= 2.0; // aspect
-
-          // Main vortex center
-          vec2 vc1 = vec2(0.3, 0.15);
-          vec2 dv1 = suv - vc1;
-          float dist1 = length(dv1);
-          float angle1 = atan(dv1.y, dv1.x);
-
-          // Spiral pattern
-          float spiral1 = sin(angle1 * 3.0 + dist1 * 8.0 - uTime * 0.15);
-          float vortex1 = smoothstep(0.8, 0.0, dist1) * (spiral1 * 0.5 + 0.5);
-          vortex1 *= smoothstep(0.05, 0.0, dist1) * 0.6 + 0.4;
-
-          // Second smaller vortex
-          vec2 vc2 = vec2(-0.5, -0.2);
-          vec2 dv2 = suv - vc2;
-          float dist2 = length(dv2);
-          float angle2 = atan(dv2.y, dv2.x);
-          float spiral2 = sin(angle2 * 4.0 - dist2 * 6.0 + uTime * 0.1);
-          float vortex2 = smoothstep(0.5, 0.0, dist2) * (spiral2 * 0.5 + 0.5);
-          vortex2 *= smoothstep(0.05, 0.0, dist2) * 0.5 + 0.5;
-
-          // Nebula clouds using FBM
-          float nebula = fbm(suv * 3.0 + vec2(uTime * 0.02, uTime * 0.01));
-          nebula = nebula * 0.5 + 0.5;
-
-          // Vortex color: dark golden yellow
-          vec3 vortexColor = vec3(0.77, 0.65, 0.20);
-
-          // Blend vortices
-          float vortexStrength = vortex1 * 0.7 + vortex2 * 0.4;
-          vortexStrength = mix(vortexStrength, vortexStrength * nebula, 0.5);
-          color = mix(color, vortexColor, vortexStrength * 0.6);
-
-          // Nebula wisps in vortex color
-          color += vortexColor * nebula * 0.08;
-
-          // ===== STARS =====
-          // Multiple star layers at different scales
-          float stars = 0.0;
-
-          // Bright stars (sparse)
-          vec2 suvLarge = floor(suv * 80.0);
-          float starLarge = hash(suvLarge);
-          float starBright = smoothstep(0.985, 0.986, starLarge);
-          stars += starBright;
-
-          // Medium stars
-          vec2 suvMed = floor(suv * 200.0);
-          float starMed = hash(suvMed);
-          stars += smoothstep(0.993, 0.994, starMed) * 0.7;
-
-          // Small stars (dense)
-          vec2 suvSmall = floor(suv * 400.0);
-          float starSmall = hash(suvSmall);
-          stars += smoothstep(0.997, 0.998, starSmall) * 0.4;
-
-          // Twinkle animation
-          float twinkle = sin(uTime * 2.0 + hash(suvLarge) * 20.0) * 0.3 + 0.7;
-          stars *= twinkle;
-
-          // Star color: warm white
-          vec3 starColor = vec3(1.0, 1.0, 0.92);
-          color += starColor * stars * 0.9;
-
-          // ===== BLUE PLANET =====
-          vec2 planetPos = vec2(-0.35, 0.3);
-          vec2 dp = suv - planetPos;
-          float planetDist = length(dp);
-          float planetRadius = 0.06;
-
-          if (planetDist < planetRadius) {
-            // Planet disc
-            float planetEdge = smoothstep(planetRadius, planetRadius - 0.005, planetDist);
-            vec3 planetColor = vec3(0.16, 0.32, 0.72);
-
-            // Crescent shading
-            float crescent = smoothstep(-0.02, 0.04, dp.x) * 0.6 + 0.4;
-            planetColor *= crescent;
-
-            // Subtle bands
-            float bands = sin(dp.y * 40.0) * 0.1 + 0.9;
-            planetColor *= bands;
-
-            color = mix(color, planetColor, planetEdge);
-          }
-
-          // Planet glow ring
-          if (planetDist > planetRadius && planetDist < planetRadius + 0.015) {
-            float ringAlpha = smoothstep(planetRadius + 0.015, planetRadius, planetDist) * 0.3;
-            color = mix(color, vec3(0.2, 0.4, 0.85), ringAlpha);
-          }
-
-          // ===== Distant diamond core (cyan-purple, only at very far edge) =====
-          float edgeFade = smoothstep(0.95, 1.0, abs(suv.x));
-          vec3 diamondColor = vec3(0.15, 0.25, 0.55); // subdued cyan-purple
-          color = mix(color, diamondColor, edgeFade * 0.08);
-
-          // ===== Apply global brightness =====
-          color *= uBrightness;
-
-          // Ensure no orange/red/pink pollution
-          // Clamp red channel relative to blue
-          color.r = min(color.r, color.b * 1.2 + 0.05);
-
-          gl_FragColor = vec4(color, 1.0);
-        }
-      `,
-      side: THREE.BackSide,
-      depthWrite: false,
-      fog: false
-    });
-
-    // CRITICAL: renderOrder = -1 ensures sky renders behind everything
-    mat.depthWrite = false;  // redundant but explicit per spec
-    // fog: false is set in ShaderMaterial constructor above
-    // renderOrder is set on the mesh below
-
-    this._starrySkyMesh = new THREE.Mesh(geo, mat);
-    this._starrySkyMesh.renderOrder = -1;
-    this._starrySkyMesh.name = 'starrySky';
-
-    // Add to rooftop group (NOT scene root!)
-    this.group.add(this._starrySkyMesh);
-
-    // Store for animation
-    this._skyUniforms = uniforms;
+    const sky = new StarryNightSky();
+    this._starrySkyMesh = sky.mesh;
+    this._skyUniforms = sky.uniforms;
+    this.group.add(sky.mesh);
+    this._reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   }
-
   // ==================== Antenna ====================
   _buildAntenna() {
     const group = new THREE.Group();
@@ -667,24 +467,24 @@ export class VoxelRooftop {
   // ==================== Update ====================
   update(dt) {
     // Animate star twinkle and vortex rotation
-    if (this._skyUniforms) {
+    if (this._skyUniforms && !this._reduced.matches) {
       this._skyUniforms.uTime.value += dt;
     }
 
     // Blink console indicator
     const indicator = this.group.getObjectByName('consoleIndicator');
     if (indicator) {
-      indicator.visible = Math.sin(Date.now() * 0.005) > 0;
+      indicator.visible = this._reduced.matches || Math.sin(Date.now() * 0.002) > -.75;
     }
 
     // Antenna blinker
     if (this._antennaBlinker) {
-      this._antennaBlinker.visible = Math.sin(Date.now() * 0.008) > 0.2;
+      this._antennaBlinker.visible = this._reduced.matches || Math.sin(Date.now() * 0.002) > 0.2;
     }
 
     // Wind chime gentle sway
     if (this._chimePieces) {
-      const t = Date.now() * 0.001;
+      const t = this._reduced.matches ? 0 : this._skyUniforms.uTime.value;
       for (const chime of this._chimePieces) {
         chime.position.y = chime.userData.baseY + Math.sin(t * 2.5 + chime.userData.phase) * 0.015;
         chime.rotation.z = Math.sin(t * 1.8 + chime.userData.phase) * 0.04;

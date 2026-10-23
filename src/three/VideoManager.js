@@ -41,6 +41,8 @@ export class VideoManager {
 
   /** Create all video elements, extract covers */
   initAll() {
+    // Re-entering the hall must reuse the existing media elements and listeners.
+    if (this._videos.size) return;
     for (const track of TRACKS) {
       const video = document.createElement('video');
       video.src = track.path;

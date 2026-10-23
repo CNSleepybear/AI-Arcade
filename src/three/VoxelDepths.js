@@ -91,6 +91,8 @@ export class VoxelDepths {
 
     /** @type {string} current E.V.E. zone */
     this._currentZone = 'default';
+    this._motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    this._dustDummy = new THREE.Object3D();
 
     // ─── Build order ───
     this._buildArchitecture();
@@ -133,12 +135,8 @@ export class VoxelDepths {
   }
 
   _buildWalls() {
-    const wallTex = PixelTextureGenerator.geminiPixel(0x0d0d1a, 5, 6);
-    wallTex.wrapS = THREE.RepeatWrapping;
-    wallTex.wrapT = THREE.RepeatWrapping;
-    wallTex.repeat.set(2, 1);
     const wallMat = new THREE.MeshStandardMaterial({
-      map: wallTex, roughness: 0.9, metalness: 0.05,
+      color:0x1c273b, roughness: 0.9, metalness: 0.05,
     });
     const h = 4;
     const w = (x, z, wd, d) => {
@@ -267,6 +265,7 @@ export class VoxelDepths {
   // ═══════════════════════════════════════════
 
   _buildDataPillars() {
+    const tierHeight=.32;
     for (const def of PILLAR_DEFS) {
       const group = new THREE.Group();
       group.position.set(def.x, 0, def.z);
@@ -274,23 +273,25 @@ export class VoxelDepths {
 
       // Voxel blocks — emissive purple
       const blockMat = () => new THREE.MeshStandardMaterial({
-        color: 0x1a1a1a,
+        color: 0x28374b,
         roughness: 0.85,
         emissive: new THREE.Color(def.color),
-        emissiveIntensity: 0.55,
+        emissiveIntensity: 0.10,
       });
 
       for (let row = 0; row < def.height; row++) {
-        const block = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), blockMat());
-        block.position.y = 0.3 + row * 0.6;
+        const block = new THREE.Mesh(new THREE.BoxGeometry(0.6, .29, 0.6), blockMat());
+        block.position.y = tierHeight/2 + row * tierHeight;
         block.rotation.y = (row * 0.12 + def.x * 0.08) % (Math.PI * 2);
         block.rotation.x = (row * 0.05) % 0.15;
         block.name = 'pillarBlock';
         group.add(block);
+        const strip=new THREE.Mesh(new THREE.BoxGeometry(.035,.18,.012),new THREE.MeshBasicMaterial({color:def.color}));
+        strip.position.set(.21,tierHeight/2+row*tierHeight,.308);group.add(strip);
       }
 
       // Top cap — brighter
-      const capY = 0.3 + def.height * 0.6 + 0.1;
+      const capY = def.height * tierHeight + 0.1;
       const capGeo = new THREE.BoxGeometry(0.5, 0.12, 0.5);
       const capMat = new THREE.MeshBasicMaterial({
         color: new THREE.Color(def.color).multiplyScalar(1.4),
@@ -307,6 +308,7 @@ export class VoxelDepths {
       const holoTex = new THREE.CanvasTexture(holoCanvas);
       holoTex.magFilter = THREE.NearestFilter;
       holoTex.minFilter = THREE.NearestFilter;
+      holoTex.colorSpace = THREE.SRGBColorSpace;
       const holoPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(1.0, 0.55),
         new THREE.MeshBasicMaterial({ map: holoTex, transparent: true, depthWrite: false })
@@ -640,6 +642,8 @@ export class VoxelDepths {
   /** @public — called by main.js animation loop */
   updateAltar() {
     const collected = this.exploration ? this.exploration.shardsCollected : 0;
+    if (collected === this._altarCollected) return;
+    this._altarCollected = collected;
     for (let i = 0; i < this._shardSlotOrbs.length; i++) {
       const filled = i < collected;
       const orb = this._shardSlotOrbs[i];
@@ -867,7 +871,9 @@ export class VoxelDepths {
   // ═══════════════════════════════════════════
 
   update(dt) {
-    const t = this.globalState._depthsTime || 0;
+    const reduced = this._motion.matches;
+    const t = reduced ? 0 : this.globalState._depthsTime || 0;
+    if(reduced)dt=0;
 
     // ─── AI Core: rotation + float ───
     if (this._coreGroup) {
@@ -903,7 +909,7 @@ export class VoxelDepths {
     }
 
     // ─── Broken cabinet: screen flicker ───
-    if (this._brokenScreenMat) {
+    if (this._brokenScreenMat && !reduced) {
       const flicker = 0.2 + Math.random() * 0.8;
       const r = Math.floor(50 + Math.random() * 100);
       const g = Math.floor(200 + Math.random() * 55);
@@ -972,8 +978,8 @@ export class VoxelDepths {
     }
 
     // ─── Dust particles ───
-    if (this._dustMesh && this._dustData) {
-      const dummy = new THREE.Matrix4();
+    if (this._dustMesh && this._dustData && !reduced) {
+      const dummy = this._dustDummy;
       const coreX = 0, coreZ = -4.5;
       for (let i = 0; i < this._dustData.length; i++) {
         const d = this._dustData[i];
@@ -982,12 +988,8 @@ export class VoxelDepths {
         // Slight drift toward core
         d.x += (coreX - d.x) * 0.003 * dt;
         d.z += (coreZ - d.z) * 0.003 * dt;
-        dummy.compose(
-          new THREE.Vector3(d.x, d.y, d.z),
-          new THREE.Quaternion(),
-          new THREE.Vector3(0.7, 0.7, 0.7)
-        );
-        this._dustMesh.setMatrixAt(i, dummy);
+        dummy.position.set(d.x,d.y,d.z);dummy.scale.setScalar(.7);dummy.updateMatrix();
+        this._dustMesh.setMatrixAt(i, dummy.matrix);
       }
       this._dustMesh.instanceMatrix.needsUpdate = true;
     }

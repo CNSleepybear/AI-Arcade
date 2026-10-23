@@ -5,6 +5,8 @@ export default defineConfig({
   root: '.',
   publicDir: 'public',
   base: './',
+  // Embedded games own their dependencies; only scan the arcade entry point.
+  optimizeDeps: { entries: ['index.html'] },
   server: {
     port: 3000,
     open: true

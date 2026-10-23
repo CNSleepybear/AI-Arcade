@@ -24,13 +24,17 @@ import { CatManager } from './three/CatManager.js';
 import { getCatDefs } from './three/Cat.js';
 import { MESSAGE_CATEGORIES, getTemplatesByCategory } from './data/messageDB.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { init as initAINPC, trigger as eveTrigger, updateContext as eveUpdateContext, TRIGGER as EVE_TRIGGER } from './data/ainpc/AINPC.js';
+import { init as initAINPC, trigger as rawEveTrigger, updateContext as eveUpdateContext, destroy as destroyAINPC, TRIGGER as EVE_TRIGGER } from './data/ainpc/AINPC.js';
 import { MusicPlayer } from './ui/MusicPlayer.js';
+import { TitleArtwork } from './ui/TitleArtwork.js';
+import { FeedbackLayer } from './ui/FeedbackLayer.js';
+import { getRenderViewport } from './three/RenderViewport.js';
 
 window.__arcadeProgress = 0;
 
 // Initialize i18n
 initLanguage();
+new TitleArtwork(document.getElementById('title-art-canvas'), document.getElementById('title-screen'));
 
 const STATE = { TITLE: 'title', AUTH: 'auth', ROAMING: 'roaming', SITTING: 'sitting', PLAYING: 'playing' };
 let currentState = STATE.TITLE;
@@ -40,6 +44,7 @@ let interactLock = false;
 // Floor system — which vertical level the player is on
 let currentFloorKey = 'SURFACE';  // 'SURFACE' | 'DEPTHS' | 'ROOFTOP' | 'SANCTUARY'
 let floorTransitioning = false;
+let observingSky = false;
 
 // Sanctuary — 3D scene at Y=16, shelter iframe overlay
 let shelterIframeActive = false;
@@ -53,16 +58,16 @@ const globalState = {
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// The final pass enlarges retro pixels; DPR supersampling adds no scene detail.
+renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // Gemini V3: tone mapping disabled — ACES crushes the retro pixel color pipeline
 // renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
 
 // ==================== Low-Res Render Target (Gemini V3 Pixel Pipeline) ====================
-const VIRTUAL_WIDTH = 800;
-let virtualHeight = Math.round(VIRTUAL_WIDTH * (window.innerHeight / window.innerWidth));
-const lowResTarget = new THREE.WebGLRenderTarget(VIRTUAL_WIDTH, virtualHeight, {
+let renderViewport = getRenderViewport(window.innerWidth, window.innerHeight);
+const lowResTarget = new THREE.WebGLRenderTarget(renderViewport.width, renderViewport.height, {
   minFilter: THREE.NearestFilter,
   magFilter: THREE.NearestFilter,
   format: THREE.RGBAFormat
@@ -75,8 +80,8 @@ const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const retroShader = new THREE.ShaderMaterial({
   uniforms: {
     tDiffuse: { value: lowResTarget.texture },
-    uResolution: { value: new THREE.Vector2(VIRTUAL_WIDTH, virtualHeight) },
-    uColorDepth: { value: 20.0 }
+    uResolution: { value: new THREE.Vector2(renderViewport.width, renderViewport.height) },
+    uColorDepth: { value: 32.0 }
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -98,7 +103,8 @@ const retroShader = new THREE.ShaderMaterial({
       if (index == 0) return 0.0;  if (index == 1) return 8.0;  if (index == 2) return 2.0;  if (index == 3) return 10.0;
       if (index == 4) return 12.0; if (index == 5) return 4.0;  if (index == 6) return 14.0; if (index == 7) return 6.0;
       if (index == 8) return 3.0;  if (index == 9) return 11.0; if (index == 10) return 1.0; if (index == 11) return 9.0;
-      return 15.0;
+      if (index == 12) return 15.0; if (index == 13) return 7.0; if (index == 14) return 13.0;
+      return 5.0;
     }
 
     void main() {
@@ -106,8 +112,8 @@ const retroShader = new THREE.ShaderMaterial({
       vec3 color = texel.rgb;
 
       // Gamma dark-area inverse compensation (prevents crushing blacks)
-      color = pow(color, vec3(1.0 / 1.5));
-      color += vec3(0.06, 0.05, 0.04);
+      color = pow(max(color, vec3(0.0)), vec3(1.0 / 1.9));
+      color = mix(vec3(0.012, 0.018, 0.03), color, 0.97);
 
       // Adaptive dither mask based on local luminance
       float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -115,14 +121,16 @@ const retroShader = new THREE.ShaderMaterial({
 
       vec2 screenPixelPos = vUv * uResolution;
       float ditherValue = (getBayerThreshold(screenPixelPos) / 16.0) - 0.5;
-      color += ditherValue * (1.8 / uColorDepth) * ditherMask;
+      color += ditherValue * (0.8 / uColorDepth) * ditherMask;
 
       // Color quantization
       color = floor(color * uColorDepth + 0.5) / uColorDepth;
 
       // Slight desaturation for retro feel
       float gray = dot(color, vec3(0.299, 0.587, 0.114));
-      color = mix(vec3(gray), color, 0.88);
+      color = mix(vec3(gray), color, 0.94);
+      float edge = 1.0 - smoothstep(0.2, 0.85, distance(vUv, vec2(0.5)));
+      color *= mix(0.9, 1.0, edge);
 
       gl_FragColor = vec4(color, texel.a);
     }
@@ -141,13 +149,14 @@ labelRenderer.domElement.style.pointerEvents = 'none';
 labelRenderer.domElement.style.zIndex = '6';
 document.getElementById('app').appendChild(labelRenderer.domElement);
 
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x332a22);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x182133);
 const audioListener = new THREE.AudioListener();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.08, 60);
 camera.add(audioListener); camera.position.set(0, 1.6, 0);
 scene.add(camera); // needed so camera children (hands) render
 const clock = new THREE.Clock();
 const audioManager = new AudioManager(audioListener);
+const feedback = new FeedbackLayer(audioManager, () => ParticleBurst.spawn(scene, {x:camera.position.x,y:camera.position.y-.8,z:camera.position.z}, {kind:'teleport',count:28,color:0xafa0e8,life:1.2,spread:1.3}));
 const musicPlayer = new MusicPlayer(audioManager);
 
 const exploration = new ExplorationSystem(scene);
@@ -161,6 +170,15 @@ exploration.onAllShardsCollected = () => { spawnHiddenMachineInDepths(); updateT
 window.__arcadeProgress = 30;
 
 const depthsMachines = [];
+
+function syncEveContext() {
+  const progress = SaveManager.load();
+  const district = currentFloorKey === 'SURFACE' ? (camera.position.x < -5.5 ? 'tavern' : camera.position.x > 5.5 ? 'arcade' : 'plaza') : currentFloorKey.toLowerCase();
+  const zone = currentFloorKey === 'DEPTHS' ? abyssWorld.depths.getCurrentZone(camera.position) : district;
+  const prompt = document.getElementById('prompt');
+  eveUpdateContext({charName:getDisplayName() || currentCharData.name,charTitle:currentCharData.title,stats:currentCharData.stats,coins:progress.coins || 0,globalScore:progress.globalScore || 0,currentState,floor:currentFloorKey,district:t(`art.${district}`),zone,zoneText:currentFloorKey==='DEPTHS'?abyssWorld.depths.getEveTextForZone(zone):'',shardsCollected:exploration.shardsCollected,hiddenMachineUnlocked:!!progress.hiddenMachineUnlocked,buff:globalState.player.currentBuff || '',recentChat:globalState.chatMessages.slice(-2),nearby:prompt && !prompt.classList.contains('hidden')?prompt.textContent:''});
+}
+function eveTrigger(eventType,payload) { syncEveContext(); rawEveTrigger(eventType,payload); }
 
 function spawnHiddenMachineInDepths() {
   const hg = GAME_REGISTRY.find(g => g.status === 'locked'); if (!hg) return;
@@ -198,9 +216,15 @@ MessageSystem.setScene(scene);
 window.__arcadeProgress = 50;
 
 const mouseInput = { dx: 0, dy: 0 };
+function requestRoamingPointerLock() {
+  // Delayed panel-close callbacks can outlive the panel that scheduled them.
+  if (currentState !== STATE.ROAMING || escapeMenuOpen || shelterIframeActive || floorTransitioning || document.hidden) return;
+  if (document.querySelector('#char-select-panel:not(.hidden), #bar-menu-panel:not(.hidden), #msg-create-panel:not(.hidden), #msg-vote-bar:not(.hidden), #chat-input-bar:not(.hidden), #chat-phone:not(.hidden), #eve-settings:not(.hidden)')) return;
+  canvas.requestPointerLock()?.catch(() => {});
+}
 document.addEventListener('mousemove', (e) => { if (document.pointerLockElement === canvas && currentState === STATE.ROAMING) { mouseInput.dx += e.movementX; mouseInput.dy += e.movementY; } });
-canvas.addEventListener('click', () => { if (currentState === STATE.ROAMING && document.pointerLockElement !== canvas) canvas.requestPointerLock(); });
-document.addEventListener('click', (e) => { if (currentState === STATE.ROAMING && document.pointerLockElement !== canvas && !e.target.closest('#char-select-panel') && !e.target.closest('#game-container') && !e.target.closest('#chat-input-bar') && !e.target.closest('#msg-create-panel') && !e.target.closest('#msg-vote-bar') && !e.target.closest('#escape-menu') && !e.target.closest('#eve-phone') && !e.target.closest('#eve-settings') && !e.target.closest('#bar-menu-panel') && !e.target.closest('#fishing-ui') && !e.target.closest('button') && !e.target.closest('input') && !e.target.closest('textarea')) canvas.requestPointerLock(); });
+canvas.addEventListener('click', () => { if (currentState === STATE.ROAMING && document.pointerLockElement !== canvas) requestRoamingPointerLock(); });
+document.addEventListener('click', (e) => { if (currentState === STATE.ROAMING && document.pointerLockElement !== canvas && !e.target.closest('#char-select-panel') && !e.target.closest('#game-container') && !e.target.closest('#chat-input-bar') && !e.target.closest('#msg-create-panel') && !e.target.closest('#msg-vote-bar') && !e.target.closest('#escape-menu') && !e.target.closest('#eve-phone') && !e.target.closest('#eve-settings') && !e.target.closest('#bar-menu-panel') && !e.target.closest('#fishing-ui') && !e.target.closest('button') && !e.target.closest('input') && !e.target.closest('textarea')) requestRoamingPointerLock(); });
 document.addEventListener('pointerlockchange', () => { mouseInput.dx = 0; mouseInput.dy = 0; if (document.pointerLockElement === canvas) { document.body.classList.add('eve-pointer-locked'); } else { document.body.classList.remove('eve-pointer-locked'); } });
 
 // ==================== Auth ====================
@@ -256,7 +280,7 @@ function showVoteBar() {
 function closeVoteBar() {
   voteBar.classList.add('hidden');
   voteBeaconId = null;
-  if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100);
+  if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100);
 }
 
 document.getElementById('msg-vote-like').addEventListener('click', () => {
@@ -292,13 +316,14 @@ const chatInputField = document.getElementById('chat-input-field');
 let chatOpen = false;
 let phoneChatOpen = false;
 function openChat() { if (chatOpen) return; chatOpen = true; chatInputBar.classList.remove('hidden'); chatInputField.value = ''; chatInputField.focus(); document.exitPointerLock(); }
-function closeChat() { if (!chatOpen) return; chatOpen = false; chatInputBar.classList.add('hidden'); chatInputField.value = ''; chatInputField.blur(); if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100); }
+function closeChat() { if (!chatOpen) return; chatOpen = false; chatInputBar.classList.add('hidden'); chatInputField.value = ''; chatInputField.blur(); if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100); }
 function sendChatMessage() { const t = chatInputField.value.trim(); if (!t) return; networkClient.sendChat({ author: getDisplayName() || currentCharData.name, text: t, color: '#00ffcc' }); chatInputField.value = ''; closeChat(); const s = SaveManager.load(); s._chatSent = (s._chatSent || 0) + 1; updateMissionProgress(s, '_dm_chat', 1); SaveManager.save(s); checkAndToast(); }
 chatInputField.addEventListener('keydown', (e) => { if (e.code === 'Enter') { e.preventDefault(); sendChatMessage(); } if (e.code === 'Escape') { e.preventDefault(); closeChat(); } e.stopPropagation(); });
 
 // ==================== Chat Phone (hold Tab) ====================
 const phonePanel = document.getElementById('chat-phone');
 const phoneMsgs = document.getElementById('chat-phone-msgs');
+let lastPhoneHTML = '';
 function openPhoneChat() {
   if (phoneChatOpen) return;
   phoneChatOpen = true;
@@ -310,7 +335,7 @@ function closePhoneChat() {
   if (!phoneChatOpen) return;
   phoneChatOpen = false;
   phonePanel.classList.add('hidden');
-  if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100);
+  if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100);
 }
 function renderChatPhone() {
   const s = SaveManager.load();
@@ -340,7 +365,7 @@ function renderChatPhone() {
   }
   missionsHTML += '</div>';
 
-  phoneMsgs.innerHTML = missionsHTML + msgs.map(m => {
+  const nextHTML = missionsHTML + msgs.map(m => {
     const time = new Date(m.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     return `<div class="chat-msg">
       <div class="chat-msg-meta">
@@ -350,7 +375,13 @@ function renderChatPhone() {
       <div class="chat-msg-text">${m.text}</div>
     </div>`;
   }).join('');
-  phoneMsgs.scrollTop = phoneMsgs.scrollHeight;
+  if (nextHTML !== lastPhoneHTML) {
+    const followLatest = phoneMsgs.scrollHeight - phoneMsgs.scrollTop - phoneMsgs.clientHeight < 24;
+    const scrollTop = phoneMsgs.scrollTop;
+    phoneMsgs.innerHTML = nextHTML;
+    lastPhoneHTML = nextHTML;
+    phoneMsgs.scrollTop = followLatest ? phoneMsgs.scrollHeight : scrollTop;
+  }
 }
 
 // ==================== Achievement System ====================
@@ -373,6 +404,8 @@ function checkAndToast() {
   achTitle.textContent = a.title;
   achDesc.textContent = a.desc;
   achToast.classList.remove('hidden');
+  audioManager.playSFX('sfx_achievement');
+  feedback.pulse(window.innerWidth / 2, window.innerHeight / 2, 'achievement');
   if (achTimeout) clearTimeout(achTimeout);
   achTimeout = setTimeout(() => achToast.classList.add('hidden'), 4000);
 }
@@ -390,6 +423,8 @@ window._claimMission = (idx) => {
 };
 
 document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea, [contenteditable="true"]')) return;
+  if (escapeMenuOpen && e.code !== 'Escape') return;
   if (chatOpen && document.activeElement === chatInputField) return;
   if (phoneChatOpen && e.code === 'Tab') { e.preventDefault(); return; }
   keys[e.code] = true;
@@ -413,6 +448,19 @@ document.addEventListener('keyup', (e) => {
 const velocity = new THREE.Vector3(); const BASE_MS = 6.5, A = 28, F = 11;
 let footstepTimer = 0;
 let shakeIntensity = 0;
+function clearMovementInput() {
+  for (const code of Object.keys(keys)) keys[code] = false;
+  velocity.set(0, 0, 0);
+  mouseInput.dx = 0; mouseInput.dy = 0; footstepTimer = 0;
+  if (phoneChatOpen) { phoneChatOpen = false; phonePanel.classList.add('hidden'); }
+}
+window.addEventListener('blur', clearMovementInput);
+document.addEventListener('visibilitychange', () => {
+  clearMovementInput();
+  // Discard time spent in another tab; never advance the simulation on return.
+  clock.getDelta();
+  renderInvalidated = true;
+});
 
 /** Get current max speed considering active buff */
 function getMaxSpeed() {
@@ -421,7 +469,7 @@ function getMaxSpeed() {
   }
   return BASE_MS;
 }
-function triggerShake(intensity = 0.08) { shakeIntensity = Math.max(shakeIntensity, intensity); }
+function triggerShake(intensity = 0.08) { if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) shakeIntensity = Math.max(shakeIntensity, intensity); }
 
 // ==================== Camera Transition Tween ====================
 const tweenData = { active: false, startPos: new THREE.Vector3(), endPos: new THREE.Vector3(), startYaw: 0, endYaw: 0, startPitch: 0, endPitch: 0, progress: 0, duration: 0.4, onDone: null };
@@ -457,6 +505,7 @@ function updateMovement(dt) {
   const fw = fpCamera.getForwardFlat(), rt = fpCamera.getRightFlat(), id = new THREE.Vector3();
   if (keys['KeyW']) id.add(fw); if (keys['KeyS']) id.sub(fw); if (keys['KeyA']) id.sub(rt); if (keys['KeyD']) id.add(rt);
   if (id.lengthSq() > 1) id.normalize();
+  if(id.lengthSq()>0 || currentFloorKey!=='ROOFTOP')observingSky=false;
   const ms = getMaxSpeed();
   velocity.x += id.x * A * dt; velocity.z += id.z * A * dt; velocity.x -= velocity.x * F * dt; velocity.z -= velocity.z * F * dt;
   const sp = velocity.length(); if (sp > ms) velocity.multiplyScalar(ms / sp); if (sp < 0.01) velocity.set(0, 0, 0);
@@ -470,6 +519,9 @@ function updateMovement(dt) {
   } else if (currentFloorKey === 'ROOFTOP') {
     camera.position.x = THREE.MathUtils.clamp(camera.position.x, -4.8, 4.8);
     camera.position.z = THREE.MathUtils.clamp(camera.position.z, -4.8, 4.8);
+  } else if (currentFloorKey === 'SANCTUARY') {
+    camera.position.x = THREE.MathUtils.clamp(camera.position.x, -5.1, 5.1);
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z, -4.5, 5.1);
   } else {
     camera.position.x = THREE.MathUtils.clamp(camera.position.x, WORLD_BOUNDS.xMin, WORLD_BOUNDS.xMax);
     camera.position.z = THREE.MathUtils.clamp(camera.position.z, WORLD_BOUNDS.zMin, WORLD_BOUNDS.zMax);
@@ -482,7 +534,7 @@ function updateMovement(dt) {
   if (moveRatio > 0.1) {
     footstepTimer -= dt;
     if (footstepTimer <= 0) {
-      audioManager.playSFX('sfx_step');
+      audioManager.playSFX('sfx_step', { surface: currentFloorKey === 'DEPTHS' ? 'depths' : camera.position.x < -5.5 ? 'tavern' : 'plaza' });
       footstepTimer = 0.45 - moveRatio * 0.15; // faster steps at higher speed
     }
   } else { footstepTimer = 0; }
@@ -490,6 +542,7 @@ function updateMovement(dt) {
 
 function handleInteract() {
   if (interactLock) return; const pos = new THREE.Vector3(camera.position.x, 0, camera.position.z);
+  fpCamera.gesture('reach');
 
   // Plaza pillar — descend into Memory Depths
   if (isNearPillarEntrance(camera.position)) { goToDepths(); return; }
@@ -508,6 +561,11 @@ function handleInteract() {
 
   // Sanctuary exit
   if (isNearSanctuaryExit(camera.position)) { goFromSanctuary(); return; }
+
+  if (currentFloorKey==='ROOFTOP' && Math.hypot(camera.position.x+1,camera.position.z+1.2)<1.7) {
+    observingSky=true;clearMovementInput();startTween(camera.position.clone(),-.95,.68,.75);
+    eveTrigger(EVE_TRIGGER.SKY_VIEWED);showPrompt(t('art.sky_view'));return;
+  }
 
   // Sanctuary: open shelter iframe
   if (currentFloorKey === 'SANCTUARY' && abyssWorld.sanctuary) {
@@ -600,6 +658,9 @@ function handleInteract() {
     if (nearbyCat) {
       const result = catManager.petCat(nearbyCat, camera.position);
       if (result) {
+        fpCamera.gesture('pet');
+        audioManager.playSFX('sfx_cat');
+        ParticleBurst.spawn(scene, {x:nearbyCat.group.position.x,y:nearbyCat.group.position.y+.65,z:nearbyCat.group.position.z}, {kind:'affection',color:0xe9a0b2,count:12,life:1.3,size:.025,spread:.3,speed:.4});
         // Show response
         showPrompt(result.emoji + ' ' + result.name + ': 「' + result.message + '」');
         setTimeout(hidePrompt, 3000);
@@ -683,7 +744,7 @@ function openBarMenu() {
 
 function closeBarMenu() {
   barMenuPanel.classList.add('hidden');
-  if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100);
+  if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100);
 }
 
 barMenuClose.addEventListener('click', closeBarMenu);
@@ -708,8 +769,9 @@ function buyDrink(drink) {
   buffEl.textContent = drink.icon + ' ' + drink.name + ' ' + drink.buffDesc.split(' ')[0];
   buffEl.classList.remove('hidden');
   audioManager.playSFX('sfx_drink');
+  fpCamera.gesture('drink');
   triggerShake(0.04);
-  ParticleBurst.spawn(scene, new THREE.Vector3(camera.position.x, 1.2, camera.position.z), { count: 10, color: parseInt(drink.color.replace('#', '0x')), life: 0.8, size: 0.04, spread: 0.4 });
+  ParticleBurst.spawn(scene, new THREE.Vector3(camera.position.x, camera.position.y - 0.4, camera.position.z), { kind: 'drink', count: 18, color: parseInt(drink.color.replace('#', '0x')), life: 1.1, size: 0.04, spread: 0.4 });
   showPrompt(drink.icon + ' ' + drink.name + ' — ' + drink.buffDesc);
   setTimeout(hidePrompt, 2500);
   eveTrigger(EVE_TRIGGER.DRINK_BOUGHT, { drink: drink.id });
@@ -794,7 +856,7 @@ function goToDepths() {
       overlay.remove();
       floorTransitioning = false;
       interactLock = false;
-      canvas.requestPointerLock();
+      requestRoamingPointerLock();
       showPrompt(t('prompt.depths_enter'));
       setTimeout(hidePrompt, 3000);
     }, 700);
@@ -834,7 +896,7 @@ function goToSurface() {
       overlay.remove();
       floorTransitioning = false;
       interactLock = false;
-      canvas.requestPointerLock();
+      requestRoamingPointerLock();
       showPrompt(t('prompt.surface_return'));
       setTimeout(hidePrompt, 2000);
     }, 700);
@@ -878,6 +940,7 @@ function goToRooftop() {
     // Show rooftop cats, hide surface cats
     catManager.setFloorVisible('ROOFTOP', true);
     catManager.setFloorVisible('SURFACE', false);
+    eveTrigger(EVE_TRIGGER.ROOFTOP_ENTERED);
 
     // Stop tavern/plaza music
     abyssWorld.tavern?.stopMusic?.();
@@ -887,7 +950,7 @@ function goToRooftop() {
       overlay.remove();
       floorTransitioning = false;
       interactLock = false;
-      canvas.requestPointerLock();
+      requestRoamingPointerLock();
       showPrompt(t('prompt.rooftop_enter'));
       setTimeout(hidePrompt, 4000);
     }, 700);
@@ -937,7 +1000,7 @@ function goFromRooftop() {
       overlay.remove();
       floorTransitioning = false;
       interactLock = false;
-      canvas.requestPointerLock();
+      requestRoamingPointerLock();
       showPrompt(t('prompt.rooftop_return'));
       setTimeout(hidePrompt, 2000);
     }, 700);
@@ -1003,7 +1066,7 @@ function goToSanctuary() {
       overlay.remove();
       floorTransitioning = false;
       interactLock = false;
-      canvas.requestPointerLock();
+      requestRoamingPointerLock();
       showPrompt(t('prompt.sanctuary_arrive'));
       setTimeout(hidePrompt, 4000);
     }, 700);
@@ -1046,7 +1109,7 @@ function goFromSanctuary() {
       overlay.remove();
       floorTransitioning = false;
       interactLock = false;
-      canvas.requestPointerLock();
+      requestRoamingPointerLock();
       showPrompt(t('prompt.leave_sanctuary'));
       setTimeout(hidePrompt, 2000);
     }, 700);
@@ -1099,7 +1162,7 @@ function closeShelterIframe() {
   if (overlay) overlay.remove();
 
   setTimeout(() => {
-    if (currentState === STATE.ROAMING) canvas.requestPointerLock();
+    if (currentState === STATE.ROAMING) requestRoamingPointerLock();
   }, 150);
 }
 
@@ -1316,7 +1379,7 @@ function resetFishing() {
   fishingBite.classList.add('hidden');
   fishingResult.classList.add('hidden');
   fishingTimerEl.textContent = '';
-  if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100);
+  if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100);
 }
 
 function cancelFishing() {
@@ -1330,6 +1393,7 @@ function cancelFishing() {
 }
 
 function sitDown(machine) {
+  clearMovementInput();
   currentState = STATE.SITTING; currentMachine = machine;
   document.exitPointerLock();
   avatar.sit(machine.seatPosition);
@@ -1347,6 +1411,7 @@ function sitDown(machine) {
   });
 }
 function exitGame() {
+  clearMovementInput();
   // Hide container first, then destroy & recreate the iframe.
   // ANOMALY runs its own WebGL context + rAF loop; merely clearing
   // src is not enough to stop its engine. Replacing the element
@@ -1374,7 +1439,7 @@ function exitGame() {
   camera.position.copy(sp);
   fpCamera.yaw = 0; fpCamera.pitch = 0;
   currentState = STATE.ROAMING; currentMachine = null; interactLock = false;
-  setTimeout(() => { if (currentState === STATE.ROAMING) canvas.requestPointerLock(); }, 200);
+  setTimeout(() => { if (currentState === STATE.ROAMING) requestRoamingPointerLock(); }, 200);
 }
 function loadGame(config) { const gf = document.getElementById('game-frame'), gc = document.getElementById('game-container'); document.getElementById('game-title').textContent = config.name + ' — ' + config.subtitle; gf.src = config.path + '?' + new URLSearchParams({ charId: currentCharData.id, atk: currentCharData.stats.atk || 10, def: currentCharData.stats.def || 10, spd: currentCharData.stats.spd || 10, crt: currentCharData.stats.crt || 5, luck: currentCharData.stats.luck || 10, lang: getLanguage() }); gc.classList.remove('hidden'); gf.onload = () => { try { gf.contentWindow.postMessage({ type: 'ARCADE_INIT', character: { id: currentCharData.id, name: currentCharData.name, title: currentCharData.title, stats: currentCharData.stats, exp: currentCharData.exp }, lang: getLanguage() }, '*'); } catch (e) {} }; }
 
@@ -1469,7 +1534,7 @@ function openCharSelect() {
   cb.onclick = closeCharSelect; p.classList.remove('hidden'); document.exitPointerLock();
 }
 let csc = false;
-function closeCharSelect() { if (csc) return; csc = true; document.getElementById('char-select-panel').classList.add('hidden'); if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100); setTimeout(() => { csc = false; }, 150); }
+function closeCharSelect() { if (csc) return; csc = true; document.getElementById('char-select-panel').classList.add('hidden'); if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100); setTimeout(() => { csc = false; }, 150); }
 function selectChar(id) {
   const oldCharId = currentCharData.id;
   if (!SaveManager.setCurrentChar(id)) return;
@@ -1524,7 +1589,7 @@ function selectMsgCategory(catKey) {
   }
 }
 function selectMsgTemplate(tplId, btnEl) { msgSelectedTemplate = tplId; for (const b of msgTplEl.querySelectorAll('.msg-tpl-btn')) b.classList.remove('selected'); btnEl.classList.add('selected'); }
-function closeMessagePanel() { msgPanel.classList.add('hidden'); if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100); }
+function closeMessagePanel() { msgPanel.classList.add('hidden'); if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100); }
 document.getElementById('msg-btn-cancel').addEventListener('click', closeMessagePanel);
 document.getElementById('msg-btn-place').addEventListener('click', async () => {
   if (!msgSelectedTemplate) { msgErrorEl.textContent = t('msg.pick_template'); msgErrorEl.classList.remove('hidden'); return; }
@@ -1539,12 +1604,18 @@ function updateHUD() { document.getElementById('hud-avatar').src = currentCharDa
 let pt = null; const pEl = document.getElementById('prompt');
 function showPrompt(t) { pEl.textContent = t; pEl.classList.remove('hidden'); if (pt) clearTimeout(pt); pt = setTimeout(hidePrompt, 3000); fpCamera.showHands(); }
 const bEl = document.getElementById('hud-buff');
+let lastBuffText = null;
 function updateBuffHUD() {
   const b = globalState.player.currentBuff;
+  let text = '';
   if (b && Date.now() < globalState.player.buffExpireTime) {
     const remaining = Math.ceil((globalState.player.buffExpireTime - Date.now()) / 1000);
-    bEl.textContent = '🍺 ' + b + ' ' + remaining + 's'; bEl.classList.remove('hidden');
-  } else { bEl.classList.add('hidden'); }
+    text = '🍺 ' + b + ' ' + remaining + 's';
+  }
+  if (text === lastBuffText) return;
+  lastBuffText = text;
+  bEl.textContent = text;
+  bEl.classList.toggle('hidden', !text);
 }
 function hidePrompt() { pEl.classList.add('hidden'); if (pt) { clearTimeout(pt); pt = null; } fpCamera.hideHands(); }
 function checkProximity() {
@@ -1568,6 +1639,7 @@ function checkProximity() {
     showPrompt(t('prompt.exit_rooftop'));
     return;
   }
+  if (currentFloorKey==='ROOFTOP' && Math.hypot(camera.position.x+1,camera.position.z+1.2)<1.7) { showPrompt(t(observingSky?'art.sky_view':'art.sky_prompt'));if(observingSky)fpCamera.hideHands();return; }
   if (isNearSanctuaryEntrance(camera.position)) {
     showPrompt(t('prompt.enter_sanctuary'));
     return;
@@ -1686,13 +1758,32 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   // Update low-res render target and dither shader
-  virtualHeight = Math.round(VIRTUAL_WIDTH * (h / w));
-  lowResTarget.setSize(VIRTUAL_WIDTH, virtualHeight);
-  retroShader.uniforms.uResolution.value.set(VIRTUAL_WIDTH, virtualHeight);
+  renderViewport = getRenderViewport(w, h);
+  lowResTarget.setSize(renderViewport.width, renderViewport.height);
+  retroShader.uniforms.uResolution.value.set(renderViewport.width, renderViewport.height);
+  renderInvalidated = true;
 });
 const ch2 = document.createElement('div'); ch2.id = 'controls-hint'; ch2.textContent = t('title.controls_hint'); document.getElementById('app').appendChild(ch2);
+const districtName = document.getElementById('district-name');
+const districtCode = document.querySelector('.district-code');
+let lastDistrict = '';
+function updateDistrictHUD() {
+  const zone = currentFloorKey === 'SURFACE' ? (camera.position.x < -5.5 ? 'tavern' : camera.position.x > 5.5 ? 'arcade' : 'plaza') : currentFloorKey.toLowerCase();
+  const key = `${zone}:${getLanguage()}`;
+  if (key === lastDistrict) return;
+  lastDistrict = key;
+  syncEveContext();
+  districtName.textContent = t(`art.${zone}`);
+  districtCode.textContent = ({ plaza: '01 / SURFACE', tavern: '02 / SURFACE', arcade: '03 / SURFACE', depths: 'B1 / ARCHIVE', rooftop: 'RF / OBSERVATORY', sanctuary: '04 / SANCTUARY' })[zone];
+  window.dispatchEvent(new CustomEvent('arcade:district', { detail: { name: districtName.textContent, code: districtCode.textContent } }));
+  districtName.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 300 });
+}
 
 let tt = 0, pct = 0, tws = false;
+let renderInvalidated = true;
+let wasRenderSuspended = false;
+let phoneRefreshTimer = 0;
+let eveContextTimer = 0;
 function animate() {
   _animFrameId = requestAnimationFrame(animate);
 
@@ -1700,14 +1791,20 @@ function animate() {
   // handles all visuals; we just keep the rAF loop alive for re-entry.
   if (currentState === STATE.TITLE) return;
 
-  const dt = Math.min(clock.getDelta(), 0.1); tt += dt;
+  const elapsed = clock.getDelta();
+  if (document.hidden) return;
+  const suspended = escapeMenuOpen || shelterIframeActive || currentState === STATE.PLAYING;
+  const dt = wasRenderSuspended ? 0 : Math.min(elapsed, 0.1); tt += dt;
+  wasRenderSuspended = suspended;
+  if (suspended && !renderInvalidated) return;
+  renderInvalidated = false;
 
   // Pause all game logic while escape menu is open
-  if (!escapeMenuOpen && !shelterIframeActive) {
-    for (const m of machines) m.update(dt);
-    for (const m of depthsMachines) m.update(dt);
-    abyssWorld.update(dt, camera.position);
-    if (abyssWorld.depths) { globalState._depthsTime = (globalState._depthsTime || 0) + dt; abyssWorld.depths.update(dt); abyssWorld.depths.updateAltar(); }
+  if (!suspended) {
+    if (currentFloorKey === 'SURFACE') for (const m of machines) m.update(dt);
+    if (currentFloorKey === 'DEPTHS') for (const m of depthsMachines) m.update(dt);
+    abyssWorld.update(dt, camera.position, currentFloorKey);
+    if (currentFloorKey === 'DEPTHS' && abyssWorld.depths) { globalState._depthsTime = (globalState._depthsTime || 0) + dt; abyssWorld.depths.update(dt); abyssWorld.depths.updateAltar(); }
     // E.V.E. zone-aware context (every ~2s while roaming depths)
     if (currentFloorKey === 'DEPTHS' && abyssWorld.depths && currentState === STATE.ROAMING) {
       globalState._eveZoneTimer = (globalState._eveZoneTimer || 0) + dt;
@@ -1726,15 +1823,19 @@ function animate() {
     const moveRatio = velocity.length() / getMaxSpeed();
     fpCamera._updateHands(dt, moveRatio > 0.1);
     updateMovement(dt); updateTween(dt); avatar.update(dt, camera, (FLOORS[currentFloorKey] || FLOORS.SURFACE).y);
-    if (currentState === STATE.ROAMING) holoNPC.update(dt, camera.position);
+    if (currentState === STATE.ROAMING && currentFloorKey === 'SURFACE') holoNPC.update(dt, camera.position);
     exploration.update(dt); if (cosmetics) cosmetics.update(dt);
     if (currentState === STATE.ROAMING) MessageSystem.update(dt, camera.position.x, camera.position.z);
     if (globalState.player.currentBuff && Date.now() > globalState.player.buffExpireTime) { globalState.player.currentBuff = null; globalState.player.buffExpireTime = 0; }
     updateBuffHUD();
-    if (phoneChatOpen) renderChatPhone();
+    phoneRefreshTimer += dt;
+    if (phoneChatOpen && phoneRefreshTimer >= 0.25) { phoneRefreshTimer = 0; renderChatPhone(); }
     ParticleBurst.update(dt);
     catManager.update(dt, camera.position, currentFloorKey);
     musicPlayer.update(dt);
+    updateDistrictHUD();
+    eveContextTimer += dt;
+    if(eveContextTimer >= 1) { eveContextTimer = 0; syncEveContext(); }
     updateFishing(dt);
     pct += dt; if (pct > 0.4) { pct = 0; checkProximity(); }
     // Camera shake decay
@@ -1773,6 +1874,7 @@ MessageSystem.loadAll().catch(e => console.warn('[main] MessageSystem.loadAll fa
 function handleLogout() {
   if (!confirm(t('logout.confirm'))) return;
   if (currentState === STATE.PLAYING) exitGame();
+  destroyAINPC();clearMovementInput();
   // Pause jukebox music
   getVideoManager().togglePlay();
   hudEl.classList.add('hidden'); document.getElementById('hud-buff').classList.add('hidden');
@@ -1805,6 +1907,7 @@ let escapeMenuOpen = false;
 function openEscapeMenu() {
   if (escapeMenuOpen) return;
   escapeMenuOpen = true;
+  clearMovementInput();
   document.exitPointerLock();
   // Close any open sub-panels
   closeCharSelect(); closeMessagePanel(); closeVoteBar(); closeBarMenu();
@@ -1815,7 +1918,7 @@ function closeEscapeMenu() {
   if (!escapeMenuOpen) return;
   escapeMenuOpen = false;
   escapeMenu.classList.add('hidden');
-  if (currentState === STATE.ROAMING) setTimeout(() => canvas.requestPointerLock(), 100);
+  if (currentState === STATE.ROAMING) setTimeout(() => requestRoamingPointerLock(), 100);
 }
 
 function toggleEscapeMenu() {
@@ -1839,7 +1942,7 @@ document.getElementById('escape-btn-quit').addEventListener('click', () => {
 const titleScreen = document.getElementById('title-screen'), titleDissolve = document.getElementById('title-dissolve'), hudEl = document.getElementById('hud');
 let rs = false;
 let _animFrameId = null;
-function startRenderLoop() { if (rs) return; rs = true; animate(); }
+function startRenderLoop() { if (rs) return; rs = true; clock.getDelta(); renderInvalidated = true; animate(); }
 function stopRenderLoop() {
   rs = false;
   if (_animFrameId) { cancelAnimationFrame(_animFrameId); _animFrameId = null; }
@@ -1863,11 +1966,11 @@ function exitTitleScreen() {
     }
   }).catch(() => {});
   // Reset player to spawn point on fresh entry
-  camera.position.set(0, FLOORS.SURFACE.y + FLOORS.SURFACE.eyeHeight, 0);
-  fpCamera.yaw = 0; fpCamera.pitch = 0;
+  camera.position.set(-3.6, FLOORS.SURFACE.y + FLOORS.SURFACE.eyeHeight, 3.2);
+  fpCamera.yaw = -1.16; fpCamera.pitch = -0.035;
   velocity.set(0, 0, 0);
   currentFloorKey = 'SURFACE';
-  setTimeout(() => { currentState = STATE.ROAMING; titleScreen.style.display = 'none'; hudEl.classList.remove('hidden'); updateHUD(); startRenderLoop(); canvas.requestPointerLock(); initAINPC(); eveTrigger(EVE_TRIGGER.LOGIN, { name: getDisplayName() || currentCharData.name }); eveUpdateContext({ charName: currentCharData.name, charTitle: currentCharData.title, stats: currentCharData.stats, coins: save.coins, globalScore: save.globalScore, currentState: 'roaming', floor: currentFloorKey, buff: globalState.player.currentBuff || '无' }); getVideoManager().initAll(); getVideoManager().startJukebox(); setTimeout(() => { titleDissolve.classList.remove('active'); setTimeout(() => titleDissolve.classList.add('hidden'), 600); }, 100); }, 600);
+  setTimeout(() => { currentState = STATE.ROAMING; titleScreen.style.display = 'none'; hudEl.classList.remove('hidden'); updateHUD(); startRenderLoop(); requestRoamingPointerLock(); initAINPC(); eveTrigger(EVE_TRIGGER.LOGIN, { name: getDisplayName() || currentCharData.name }); eveUpdateContext({ charName: currentCharData.name, charTitle: currentCharData.title, stats: currentCharData.stats, coins: save.coins, globalScore: save.globalScore, currentState: 'roaming', floor: currentFloorKey, buff: globalState.player.currentBuff || '无' }); getVideoManager().initAll(); getVideoManager().startJukebox(); setTimeout(() => { titleDissolve.classList.remove('active'); setTimeout(() => titleDissolve.classList.add('hidden'), 600); }, 100); }, 600);
 }
 
 document.getElementById('title-btn-enter').addEventListener('click', requestEnterGame);
@@ -1904,13 +2007,7 @@ function finishLoading() {
     ts.classList.remove('hidden');
     // Setup language switcher
     setupLangSwitcher();
-    const authPanel = document.getElementById('auth-panel');
-    if (!isLoggedIn()) {
-      // Show auth immediately if not logged in
-      ts.classList.add('fade-out');
-      authPanel.classList.remove('hidden');
-      document.getElementById('auth-username').focus();
-    }
+    // Keep the authored title visible; identification opens on Enter Game.
   }, 600);
 }
 
@@ -1930,6 +2027,7 @@ function handleLangSwitch() {
     } catch (e) {}
   }
   applyI18nToDOM();
+  feedback.updateVolume();
   // Rebuild dynamic content that might be open
   const hintEl = document.getElementById('controls-hint');
   if (hintEl) hintEl.textContent = t('title.controls_hint');

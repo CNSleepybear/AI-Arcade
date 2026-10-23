@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
+import { SkeletonBand } from './SkeletonBand.js';
 
 /**
  * VoxelTavern — Gemini-style "Iron Anchor Tavern" (铁锚酒馆).
@@ -47,12 +48,12 @@ export class VoxelTavern {
   }
 
   _buildWalls() {
-    const wallTex = PixelTextureGenerator.plasterWall();
+    const wallTex = PixelTextureGenerator.geminiPixel(0x63514c, 5, 3);
     const wallMat = new THREE.MeshStandardMaterial({
       map: wallTex,
       roughness: 0.9,
       metalness: 0.02,
-      color: 0xddd5c0
+      color: 0xead4c6
     });
 
     const buildWall = (x, y, z, w, h, d, rotY = 0) => {
@@ -78,7 +79,7 @@ export class VoxelTavern {
 
     const ceilGeo = new THREE.PlaneGeometry(9, 10);
     const ceilMat = new THREE.MeshStandardMaterial({
-      color: 0xd4c8ad,
+      color: 0x34303b,
       roughness: 0.95,
       metalness: 0.02
     });
@@ -334,171 +335,8 @@ export class VoxelTavern {
   }
 
   _buildSkeletonBand() {
-    const skelGroup = new THREE.Group();
-    skelGroup.name = 'SkeletonBand';
-    skelGroup.position.set(-11, 0.4, -3);
-
-    // Minecraft-style bone texture — white with subtle pixel noise
-    const boneTex = PixelTextureGenerator.geminiPixel(0xe8e4d8, 8, 2);
-    const boneMat = new THREE.MeshStandardMaterial({
-      map: boneTex,
-      roughness: 0.5,
-      metalness: 0.02
-    });
-
-    // ===== Minecraft Proportions: big head, thin limbs =====
-
-    // Legs — thin rectangles
-    for (const lx of [-0.1, 0.1]) {
-      const upperLeg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.45, 0.1), boneMat);
-      upperLeg.position.set(lx, 0.45, 0);
-      skelGroup.add(upperLeg);
-      const lowerLeg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.45, 0.1), boneMat);
-      lowerLeg.position.set(lx, 0.02, 0);
-      skelGroup.add(lowerLeg);
-    }
-
-    // Pelvis
-    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.16), boneMat);
-    pelvis.position.y = 0.68;
-    skelGroup.add(pelvis);
-
-    // Torso/ribcage — Minecraft style rectangular body
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.5, 0.16), boneMat);
-    torso.position.y = 1.05;
-    skelGroup.add(torso);
-
-    // Shoulder nubs
-    for (const sx of [-0.18, 0.18]) {
-      const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), boneMat);
-      shoulder.position.set(sx, 1.32, 0);
-      skelGroup.add(shoulder);
-    }
-
-    // Arms — thin hanging rectangles (Minecraft style)
-    const armGeo = new THREE.BoxGeometry(0.1, 0.52, 0.1);
-    const leftArm = new THREE.Mesh(armGeo, boneMat);
-    leftArm.position.set(-0.22, 1.0, 0);
-    leftArm.rotation.z = 0.15;
-    skelGroup.add(leftArm);
-
-    const rightArm = new THREE.Mesh(armGeo, boneMat);
-    rightArm.position.set(0.22, 0.95, 0);
-    rightArm.rotation.z = -0.15;
-    skelGroup.add(rightArm);
-
-    // ===== Big Minecraft Head =====
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), boneMat);
-    head.position.y = 1.52;
-    skelGroup.add(head);
-
-    // Black empty eye sockets — Minecraft signature look
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-    const eyeGeo = new THREE.BoxGeometry(0.06, 0.06, 0.04);
-    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.08, 1.56, 0.16);
-    skelGroup.add(leftEye);
-    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.08, 1.56, 0.16);
-    skelGroup.add(rightEye);
-
-    // Nose/mouth shadow
-    const mouthGeo = new THREE.BoxGeometry(0.1, 0.04, 0.04);
-    const mouth = new THREE.Mesh(mouthGeo, eyeMat);
-    mouth.position.set(0, 1.43, 0.16);
-    skelGroup.add(mouth);
-
-    // ===== Straw Hat (草帽) =====
-    const hatGroup = new THREE.Group();
-    hatGroup.position.set(0, 1.68, 0);
-
-    const strawTex = PixelTextureGenerator.geminiPixel(0xd4b85c, 10, 2);
-    const strawMat = new THREE.MeshStandardMaterial({
-      map: strawTex,
-      roughness: 0.7,
-      metalness: 0.02
-    });
-
-    // Wide brim
-    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.04, 0.48), strawMat);
-    brim.position.y = 0;
-    hatGroup.add(brim);
-
-    // Crown base
-    const crownBase = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.26), strawMat);
-    crownBase.position.y = 0.09;
-    hatGroup.add(crownBase);
-
-    // Crown top (slightly narrower)
-    const crownTop = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.2), strawMat);
-    crownTop.position.y = 0.2;
-    hatGroup.add(crownTop);
-
-    // Hat band (dark red ribbon)
-    const bandMat = new THREE.MeshBasicMaterial({ color: 0x993333 });
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.28), bandMat);
-    band.position.y = 0.08;
-    hatGroup.add(band);
-
-    skelGroup.add(hatGroup);
-    this.hatGroup = hatGroup;
-
-    // ===== Minecraft Guitar =====
-    const guitarGroup = new THREE.Group();
-    guitarGroup.position.set(0.28, 0.95, 0.12);
-    guitarGroup.rotation.z = -0.5;
-    guitarGroup.rotation.x = 0.2;
-
-    // Guitar body — warm red-brown
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0xcc5533,
-      roughness: 0.3,
-      metalness: 0.4,
-      emissive: 0x441100,
-      emissiveIntensity: 0.3
-    });
-    const guitarBody = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.45, 0.06), bodyMat);
-    guitarGroup.add(guitarBody);
-
-    // Sound hole
-    const holeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-    const soundHole = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), holeMat);
-    soundHole.position.set(0, 0.08, 0.04);
-    guitarGroup.add(soundHole);
-
-    // Neck
-    const neckMat = new THREE.MeshStandardMaterial({
-      map: PixelTextureGenerator.darkWood(),
-      roughness: 0.5,
-      metalness: 0.2
-    });
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 0.04), neckMat);
-    neck.position.y = 0.42;
-    guitarGroup.add(neck);
-
-    // Headstock
-    const headstock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.04), neckMat);
-    headstock.position.y = 0.65;
-    guitarGroup.add(headstock);
-
-    // Strings
-    const gStringMat = new THREE.MeshBasicMaterial({ color: 0xffdd88 });
-    for (let si = 0; si < 3; si++) {
-      const gString = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.6, 0.01), gStringMat);
-      gString.position.set(-0.04 + si * 0.04, 0.35, 0.04);
-      guitarGroup.add(gString);
-    }
-
-    skelGroup.add(guitarGroup);
-    this.guitarGroup = guitarGroup;
-
-    // ===== State Machine =====
-    this.animState = 'idle';
-    this.animTimer = 0;
-    this.animSwitchCd = 3 + Math.random() * 4; // 3-7s per state
-
-    this.skeletonGroup = skelGroup;
-    this.group.add(skelGroup);
+    this.bandRig = new SkeletonBand(this.group);
+    this.skeletonGroup = this.bandRig.group;
   }
 
   _buildAmbientLighting() {
@@ -636,57 +474,8 @@ export class VoxelTavern {
   getTrackInfo() { return this.audioManager ? this.audioManager.getTrackInfo('tavern_playlist') : null; }
 
   update(dt, playerPos) {
-    if (!this.skeletonGroup) return;
-
+    this.bandRig?.update(dt, this.audioManager?.isPlaying("tavern_playlist"));
     const t = Date.now() * 0.001;
-
-    // ===== State Machine =====
-    this.animTimer += dt;
-    if (this.animTimer > this.animSwitchCd) {
-      this.animTimer = 0;
-      this.animState = this.animState === 'idle' ? 'playing' : 'idle';
-      this.animSwitchCd = 3 + Math.random() * 5; // 3-8s per state
-    }
-
-    // Base subtle breathing bob
-    this.skeletonGroup.position.y = 0.4 + Math.sin(t * 2.5) * 0.025;
-
-    if (this.animState === 'playing') {
-      // ===== PLAYING: energetic strumming =====
-      // Body sway
-      this.skeletonGroup.rotation.z = Math.sin(t * 3.5) * 0.06;
-
-      // Head nod to the beat
-      if (this.hatGroup) {
-        this.hatGroup.rotation.x = Math.sin(t * 7) * 0.08;
-        this.hatGroup.position.y = 1.68 + Math.abs(Math.sin(t * 7)) * 0.03;
-      }
-
-      // Guitar strumming — fast rotation
-      if (this.guitarGroup) {
-        this.guitarGroup.rotation.z = -0.5 + Math.sin(t * 14) * 0.25;
-        this.guitarGroup.rotation.x = 0.2 + Math.sin(t * 10) * 0.1;
-        // Strum displacement
-        this.guitarGroup.position.y = 0.95 + Math.sin(t * 14) * 0.04;
-      }
-    } else {
-      // ===== IDLE: subtle ambient movement =====
-      // Slow gentle sway
-      this.skeletonGroup.rotation.z = Math.sin(t * 0.8) * 0.02;
-
-      // Occasional head tilt
-      if (this.hatGroup) {
-        this.hatGroup.rotation.x = Math.sin(t * 1.2) * 0.03;
-        this.hatGroup.position.y = 1.68;
-      }
-
-      // Guitar resting — subtle drift
-      if (this.guitarGroup) {
-        this.guitarGroup.rotation.z = -0.5 + Math.sin(t * 2) * 0.04;
-        this.guitarGroup.rotation.x = 0.2;
-        this.guitarGroup.position.y = 0.95 + Math.sin(t * 1.5) * 0.01;
-      }
-    }
 
     // ===== Floating cup orbs =====
     this.group.children.forEach(child => {

@@ -9,24 +9,30 @@
  */
 
 import { loadSettings, saveSettings, resetSettings, API_PRESETS } from './npcSettings.js';
+import { EveCompanionView } from '../../ui/EveCompanionView.js';
+import { getLanguage } from '../i18n.js';
 
-// ─── 模块加载时立即注入光标（确保登录/标题画面就有） ───
-injectCursor();
+// One portrait controller and one set of bindings survive title re-entry.
+let eveView = null;
+let initialized = false;
 
 import { TRIGGER, processEvent, setCommentCallback, startIdleDetection, stopIdleDetection } from './offlineBrain.js';
 import { queryOnline, testConnection, clearHistory } from './onlineClient.js';
 
 // ─── 常亮 ───
 const COMMENT_DURATION_MS = 8000;   // 每条评论持续 8 秒
-const MAX_QUEUE = 3;                // 队列最多 3 条
+const MAX_QUEUE = 12;               // Keep recent replies available for rereading.
 const ONLINE_COOLDOWN_MS = 8000;    // 在线请求冷却
 
 // ─── 内部状态 ───
 let commentQueue = [];
+let historyCursor = 0;
 let currentTimer = null;
 let onlineCooldown = false;
 let lastActivityTime = Date.now();
 let contextSnapshot = null; // 由外部定期更新
+let sessionVersion = 0;
+let requestRunning = false;
 
 // ─── DOM 引用（延迟绑定） ───
 let phoneEl = null;
@@ -47,13 +53,15 @@ let closeBtn = null;
  * 初始化 AINPC 模块：绑定 DOM、注册回调、启动空闲检测
  */
 export function init() {
+  if (initialized) { startIdleDetection(() => Date.now() - lastActivityTime); syncPanelState(); phoneEl?.classList.remove('eve-phone-hidden'); return; }
+  initialized = true;
   bindDOM();
   bindEvents();
   generateAvatar();
 
   // 注册离线脑回调
   setCommentCallback((text) => {
-    enqueue(text);
+    if (!document.hidden && document.getElementById('app').style.display !== 'none' && !loadSettings().enabled && !requestRunning) enqueue(text);
   });
 
   // 启动空闲检测
@@ -63,21 +71,15 @@ export function init() {
   syncPanelState();
   phoneEl?.classList.remove('eve-phone-hidden');
 
-  // 登录问候（延迟 2 秒避免初始闪烁）
-  const settings = loadSettings();
-  if (!settings.enabled) {
-    setTimeout(() => {
-      const name = contextSnapshot?.charName || '旅人';
-      const text = processEvent(TRIGGER.LOGIN, { name });
-      if (text) enqueue(text);
-    }, 2000);
-  }
+  // main.js supplies the single login event with its current player snapshot.
 }
 
 /** 切换手机面板显示 */
 function togglePhone() {
   if (!phoneEl) return;
+  if(document.pointerLockElement) { document.exitPointerLock();phoneEl.classList.remove('eve-phone-hidden');return; }
   if (phoneEl.classList.contains('eve-phone-hidden')) {
+    document.exitPointerLock();
     phoneEl.classList.remove('eve-phone-hidden');
   } else {
     phoneEl.classList.add('eve-phone-hidden');
@@ -86,117 +88,15 @@ function togglePhone() {
 
 /**
  * Canvas 程序化生成 E.V.E. 像素头像
- * 风格与 PixelTextureGenerator 一致，霓虹青色主色调
+ * Nightshift portrait with message-driven expressions and reduced-motion support.
  */
 function generateAvatar() {
-  const canvas = document.getElementById('eve-avatar-canvas');
-  const fallbackImg = document.getElementById('eve-avatar-img');
-  if (!canvas) return;
-
-  const size = 64;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // 背景
-  ctx.fillStyle = '#0a0a1a';
-  ctx.fillRect(0, 0, size, size);
-
-  const px = 2; // pixel block size
-
-  // 脸型 (neon cyan)
-  ctx.fillStyle = '#00ffe0';
-  for (let y = 10; y < 50; y += px) {
-    const w = 18 + Math.sin((y - 10) / 40 * Math.PI) * 12;
-    const sx = Math.floor((size - w * px) / 2);
-    for (let x = 0; x < w; x++) {
-      ctx.fillRect(sx + x * px, y, px, px);
-    }
-  }
-
-  // 眼睛 (dark with cyan dot)
-  ctx.fillStyle = '#0a0a1a';
-  ctx.fillRect(20, 22, 8, 8);
-  ctx.fillRect(36, 22, 8, 8);
-  ctx.fillStyle = '#00ffe0';
-  ctx.fillRect(24, 22, 4, 4);
-  ctx.fillRect(40, 22, 4, 4);
-
-  // 嘴巴 (small smirk)
-  ctx.fillStyle = '#0a0a1a';
-  ctx.fillRect(28, 36, 8, 4);
-  ctx.fillStyle = '#00ffe0';
-  ctx.fillRect(32, 36, 4, 2);
-
-  // 刘海 (magenta accent)
-  ctx.fillStyle = '#cc44aa';
-  for (let x = 18; x < 46; x += px) {
-    const h = 6 + ((x - 18) % 6 === 0 ? 2 : 0);
-    for (let y = 4; y < 4 + h; y += px) {
-      ctx.fillRect(x, y, px, px);
-    }
-  }
-
-  // 霓虹边框发光 (subtle)
-  ctx.strokeStyle = '#00ffe0';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(1, 1, size - 2, size - 2);
-
-  // 导出为 data URL 并设置到 img fallback
-  const dataUrl = canvas.toDataURL('image/png');
-  canvas.style.display = 'block';
-  if (fallbackImg) { fallbackImg.src = dataUrl; /* keep hidden, canvas is primary */ }
+  if (!eveView) eveView = new EveCompanionView();
+  eveView.syncMode(loadSettings().enabled);
 }
 
 /**
- * 注入像素风自定义鼠标光标
- * 24×24 霓虹青色十字准星，匹配街机厅赛博风格
- */
-function injectCursor() {
-  const size = 24;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // 透明背景
-  ctx.clearRect(0, 0, size, size);
-
-  // 中心点 (3×3, neon cyan)
-  ctx.fillStyle = '#00ffe0';
-  ctx.fillRect(10, 10, 4, 4);
-
-  // 十字线 (1px 宽)
-  ctx.fillRect(11, 2, 2, 8);   // 上
-  ctx.fillRect(11, 14, 2, 8);  // 下
-  ctx.fillRect(2, 11, 8, 2);   // 左
-  ctx.fillRect(14, 11, 8, 2);  // 右
-
-  // 外框小点 (四角)
-  ctx.fillRect(4, 4, 2, 2);
-  ctx.fillRect(18, 4, 2, 2);
-  ctx.fillRect(4, 18, 2, 2);
-  ctx.fillRect(18, 18, 2, 2);
-
-  const dataUrl = canvas.toDataURL('image/png');
-  const style = document.createElement('style');
-  style.id = 'eve-cursor-style';
-  style.textContent = `
-    html, body, #app, button, a, input, select, textarea, .clickable,
-    #eve-phone, #eve-settings, #hud, #chat-phone, #bar-menu-panel,
-    #char-select-panel, #msg-create-panel, #msg-vote-bar, #escape-menu,
-    #auth-panel, #title-screen, #game-container, #fishing-ui {
-      cursor: url(${dataUrl}) 12 12, crosshair !important;
-    }
-    body.eve-pointer-locked #game-canvas {
-      cursor: none !important;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-/**
- * 绑定 DOM 元素引用
+ * Bind the companion's existing controls.
  */
 function bindDOM() {
   phoneEl = document.getElementById('eve-phone');
@@ -218,6 +118,15 @@ function bindDOM() {
  * 绑定 UI 事件
  */
 function bindEvents() {
+  document.getElementById('eve-chat-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const input=document.getElementById('eve-chat-input'),question=input.value.trim();
+    if(!question)return;
+    input.value='';
+    trigger(TRIGGER.QUESTION,{question});
+  });
+  document.getElementById('eve-chat-input')?.addEventListener('focus',()=>document.exitPointerLock());
+  document.getElementById('eve-previous')?.addEventListener('click', advanceQueue);
   // 折叠/展开
   closeBtn?.addEventListener('click', () => phoneEl?.classList.add('eve-phone-hidden'));
 
@@ -267,6 +176,7 @@ function bindEvents() {
 
   // 保存设置
   settingsSaveBtn?.addEventListener('click', () => {
+    resetOnline();
     const enabled = settingsOnlineToggle?.checked || false;
     saveSettings({
       enabled,
@@ -332,6 +242,7 @@ function refreshSettingsUI(isOnline) {
  */
 function openSettings() {
   if (!settingsEl) return;
+  document.exitPointerLock();
   const settings = loadSettings();
   // 同步两个 radio 按钮状态
   settingsOnlineToggle.checked = settings.enabled;
@@ -381,6 +292,7 @@ function closeSettings() {
  */
 function syncPanelState(forceOnline = null) {
   const enabled = forceOnline !== null ? forceOnline : loadSettings().enabled;
+  eveView?.syncMode(enabled);
   const indicator = document.getElementById('eve-mode-indicator');
   const avatar = document.getElementById('eve-avatar-img');
 
@@ -403,9 +315,10 @@ function enqueue(text) {
   if (!text) return;
 
   // 去重：与队尾最后一条相同则跳过
-  if (commentQueue.length > 0 && commentQueue[commentQueue.length - 1] === text) return;
+  if (commentQueue.length > 0 && commentQueue[commentQueue.length - 1] === text) { eveView?.idle(); return; }
 
   commentQueue.push(text);
+  historyCursor = 0;
   if (commentQueue.length > MAX_QUEUE) commentQueue.shift();
 
   // 显示最新一条
@@ -417,20 +330,22 @@ function enqueue(text) {
  */
 function showCurrent() {
   if (!bubbleEl || commentQueue.length === 0) return;
-  const text = commentQueue[commentQueue.length - 1];
+  const text = commentQueue[commentQueue.length - 1 - historyCursor];
+  bubbleEl.removeAttribute('data-i18n');
   bubbleEl.textContent = text;
   bubbleEl.classList.remove('eve-fade-out');
   bubbleEl.classList.add('eve-fade-in');
 
   // 新消息时自动显示面板
   phoneEl?.classList.remove('eve-phone-hidden');
+  eveView?.speak(text, commentQueue.length);
 
   // 重置计时器
   if (currentTimer) clearTimeout(currentTimer);
   currentTimer = setTimeout(() => {
     bubbleEl.classList.add('eve-fade-out');
     currentTimer = null;
-  }, COMMENT_DURATION_MS);
+  }, Math.min(16000, Math.max(COMMENT_DURATION_MS, text.length * 100)));
 }
 
 /**
@@ -438,7 +353,7 @@ function showCurrent() {
  */
 function advanceQueue() {
   if (commentQueue.length <= 1) return;
-  commentQueue.pop(); // 移除当前显示的
+  historyCursor = (historyCursor + 1) % commentQueue.length;
   if (commentQueue.length > 0) {
     showCurrent();
   } else {
@@ -478,6 +393,7 @@ function showToast(message, type) {
  * @param {object} [payload={}] - 事件数据
  */
 export function trigger(eventType, payload = {}) {
+  eveView?.react(eventType);
   // 更新最后活动时间
   lastActivityTime = Date.now();
 
@@ -487,8 +403,9 @@ export function trigger(eventType, payload = {}) {
     // 在线模式：走 API（带冷却）
     triggerOnline(eventType, payload);
   } else {
+    if(phoneEl)phoneEl.dataset.replySource='local';
     // 离线模式：走状态机
-    const text = processEvent(eventType, payload);
+    const text = processEvent(eventType, {...payload,floor:contextSnapshot?.floor,district:contextSnapshot?.district,shards:contextSnapshot?.shardsCollected});
     if (text) enqueue(text);
   }
 }
@@ -499,33 +416,50 @@ export function trigger(eventType, payload = {}) {
 let onlinePendingEvent = null;
 let onlineDebounceTimer = null;
 
+function resetOnline() {
+  sessionVersion++;clearHistory();
+  if(onlineDebounceTimer)clearTimeout(onlineDebounceTimer);
+  onlineDebounceTimer=null;onlinePendingEvent=null;onlineCooldown=false;requestRunning=false;
+  eveView?.idle();
+}
+
 async function triggerOnline(eventType, payload) {
   // 收集最新事件描述
   const eventDesc = formatEvent(eventType, payload);
   if (!contextSnapshot) contextSnapshot = {};
   if (!contextSnapshot.recentEvents) contextSnapshot.recentEvents = [];
-  contextSnapshot.recentEvents.push(eventDesc);
+  if(contextSnapshot.recentEvents.at(-1)!==eventDesc)contextSnapshot.recentEvents.push(eventDesc);
   if (contextSnapshot.recentEvents.length > 5) contextSnapshot.recentEvents.shift();
 
   // 冷却中则暂存
-  if (onlineCooldown) {
-    onlinePendingEvent = { eventType, payload };
+  if (requestRunning || (onlineCooldown && eventType !== TRIGGER.QUESTION)) {
+    if(!onlinePendingEvent || eventType===TRIGGER.QUESTION || onlinePendingEvent.eventType!==TRIGGER.QUESTION)onlinePendingEvent = { eventType, payload };
     return;
   }
 
+  if(onlineDebounceTimer)clearTimeout(onlineDebounceTimer);
+  const version=sessionVersion;
   onlineCooldown = true;
-  const reply = await queryOnline(contextSnapshot);
-
-  if (reply) {
+  requestRunning = true;
+  eveView?.thinking();
+  const floor=contextSnapshot.floor;
+  const reply = await queryOnline({...contextSnapshot,language:getLanguage(),latestEvent:eventDesc,userQuestion:eventType===TRIGGER.QUESTION?payload.question:undefined});
+  if(version!==sessionVersion)return;
+  requestRunning = false;
+  // A reply about a previous room must not arrive after the player has left it.
+  if(floor!==contextSnapshot.floor && eventType!==TRIGGER.QUESTION) {
+    eveView?.idle();
+  } else if (reply) {
+    phoneEl.dataset.replySource='online';
     enqueue(reply);
   } else {
-    // 在线失败，回退离线
-    const text = processEvent(eventType, payload);
-    if (text) enqueue(text);
+    phoneEl.dataset.replySource='local';
+    const text = processEvent(eventType, {...payload,floor:contextSnapshot?.floor,district:contextSnapshot?.district,shards:contextSnapshot?.shardsCollected}, {force:true});
+    if (text) enqueue(text); else eveView?.idle();
   }
 
   // 冷却结束
-  setTimeout(() => {
+  onlineDebounceTimer=setTimeout(() => {
     onlineCooldown = false;
     // 处理暂存事件
     if (onlinePendingEvent) {
@@ -533,7 +467,7 @@ async function triggerOnline(eventType, payload) {
       onlinePendingEvent = null;
       triggerOnline(pending.eventType, pending.payload);
     }
-  }, ONLINE_COOLDOWN_MS);
+  }, onlinePendingEvent?.eventType===TRIGGER.QUESTION?0:ONLINE_COOLDOWN_MS);
 }
 
 /**
@@ -541,6 +475,14 @@ async function triggerOnline(eventType, payload) {
  */
 function formatEvent(eventType, payload) {
   switch (eventType) {
+    case TRIGGER.QUESTION: return `玩家提问：${payload.question || ''}`;
+    case TRIGGER.ROOFTOP_ENTERED: return '到达天台观星台';
+    case TRIGGER.SKY_VIEWED: return '正在用望远镜欣赏原创笔触星空';
+    case TRIGGER.SANCTUARY_ENTERED: return '进入七座微缩世界的展览馆';
+    case TRIGGER.GLOBE_VIEWING: return `正在细看展品：${payload.globe || ''}`;
+    case TRIGGER.GLOBE_ZOOMED: return `进入微缩世界：${payload.globe || ''}`;
+    case TRIGGER.CAT_PET: return `抚摸了${payload.name || '一只猫'}`;
+    case TRIGGER.CHAT_MESSAGE: return `世界聊天 ${payload.author || ''}：${payload.text || ''}`;
     case TRIGGER.GAME_STARTED: return `开始游玩 ${payload.gameId || '街机'}`;
     case TRIGGER.GAME_OVER: return `${payload.gameId || '街机'} 结束，得分 ${payload.score || 0}`;
     case TRIGGER.FISH_CAUGHT: return `钓到 ${payload.loot || '东西'}`;
@@ -576,10 +518,13 @@ export function getSettings() {
  * 销毁 AINPC（清理定时器）
  */
 export function destroy() {
+  resetOnline();
   stopIdleDetection();
   if (currentTimer) clearTimeout(currentTimer);
   if (onlineDebounceTimer) clearTimeout(onlineDebounceTimer);
   commentQueue = [];
+  historyCursor = 0;
+  phoneEl?.classList.add('eve-phone-hidden');
 }
 
 export { TRIGGER };

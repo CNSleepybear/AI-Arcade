@@ -43,62 +43,22 @@ export class HoloNPC {
     holoCanvas.height = 256;
     const hctx = holoCanvas.getContext('2d');
 
-    // Warm pixel ghost silhouette
-    hctx.fillStyle = 'rgba(255,180,100,0.18)';
-    hctx.beginPath();
-    hctx.ellipse(64, 180, 30, 60, 0, 0, Math.PI * 2);
-    hctx.fill();
-
-    // Head
-    hctx.fillStyle = 'rgba(255,200,130,0.28)';
-    hctx.beginPath();
-    hctx.arc(64, 80, 35, 0, Math.PI * 2);
-    hctx.fill();
-
-    // Pixel-style blocky eyes
-    hctx.fillStyle = '#ffcc66';
-    hctx.fillRect(46, 66, 12, 8);
-    hctx.fillRect(70, 66, 12, 8);
-
-    // Warm smile
-    hctx.strokeStyle = '#ffcc66';
-    hctx.lineWidth = 2;
-    hctx.beginPath();
-    hctx.arc(64, 82, 16, 0.1, Math.PI - 0.1);
-    hctx.stroke();
-
-    // Antennae (warm)
-    hctx.strokeStyle = '#ffaa44';
-    hctx.lineWidth = 2;
-    hctx.beginPath();
-    hctx.moveTo(50, 45);
-    hctx.quadraticCurveTo(30, 10, 35, 5);
-    hctx.stroke();
-    hctx.beginPath();
-    hctx.moveTo(78, 45);
-    hctx.quadraticCurveTo(98, 10, 93, 5);
-    hctx.stroke();
-
-    // Arms/claws (warm)
-    hctx.strokeStyle = '#ffaa44';
-    hctx.beginPath();
-    hctx.moveTo(30, 120);
-    hctx.lineTo(10, 140);
-    hctx.lineTo(18, 150);
-    hctx.closePath();
-    hctx.stroke();
-    hctx.beginPath();
-    hctx.moveTo(98, 120);
-    hctx.lineTo(118, 140);
-    hctx.lineTo(110, 150);
-    hctx.closePath();
-    hctx.stroke();
-
-    // Pixel scanlines
-    for (let y = 0; y < 256; y += 4) {
-      hctx.fillStyle = y % 8 === 0 ? 'rgba(255,180,80,0.08)' : 'rgba(0,0,0,0.04)';
-      hctx.fillRect(0, y, 128, 2);
-    }
+    // Original block-pixel anchor keeper: visor, apron, radio and signal halo.
+    hctx.imageSmoothingEnabled = false;
+    const pixel = (x,y,w,h,color) => { hctx.fillStyle=color;hctx.fillRect(x,y,w,h); };
+    pixel(28,42,72,74,'#31515b');pixel(34,36,60,84,'#47717a');
+    pixel(39,48,50,54,'#82afa8');pixel(44,55,40,28,'#142d3c');
+    pixel(48,63,10,7,'#e8c48f');pixel(70,63,10,7,'#e8c48f');
+    pixel(55,92,18,3,'#31515b');pixel(23,64,9,20,'#bc9871');pixel(96,64,9,20,'#bc9871');
+    pixel(60,22,6,16,'#799b9b');pixel(56,16,14,7,'#e8b47e');
+    pixel(39,112,50,72,'#3a5967');pixel(46,114,36,78,'#bc9871');
+    pixel(50,127,28,37,'#e2c7a0');pixel(55,136,18,18,'#345364');pixel(60,141,8,8,'#79d9ce');
+    pixel(21,119,16,44,'#82afa8');pixel(91,119,16,44,'#82afa8');
+    pixel(16,153,23,12,'#e2c7a0');pixel(89,153,23,12,'#e2c7a0');
+    pixel(42,186,17,26,'#466b77');pixel(69,186,17,26,'#466b77');
+    pixel(35,211,30,4,'#79d9ce');pixel(24,224,80,2,'#527f85');
+    for(let i=0;i<5;i++)pixel(44+i*8,235,4,3,i%2?'#e8b47e':'#79d9ce');
+    for(let y=40;y<216;y+=6)pixel(20,y,88,1,'#101d2c26');
 
     const tex = new THREE.CanvasTexture(holoCanvas);
     tex.minFilter = THREE.NearestFilter;
@@ -168,15 +128,15 @@ export class HoloNPC {
     ctx.clearRect(0, 0, w, h);
 
     // Warm bubble
-    ctx.fillStyle = 'rgba(25, 15, 8, 0.9)';
+    ctx.fillStyle = 'rgba(16, 29, 44, 0.95)';
     ctx.beginPath();
-    ctx.roundRect(10, 4, w - 20, h - 8, 12);
+    ctx.roundRect(10, 4, w - 20, h - 8, 2);
     ctx.fill();
 
-    ctx.strokeStyle = '#ffbb55';
+    ctx.strokeStyle = '#d3ad7f';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.roundRect(10, 4, w - 20, h - 8, 12);
+    ctx.roundRect(10, 4, w - 20, h - 8, 2);
     ctx.stroke();
 
     // Bright readable text
@@ -196,7 +156,7 @@ export class HoloNPC {
 
     // Gentle pulse
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.003);
-    this.holoSprite.material.opacity = pulse;
+    this.holoSprite.material.opacity = 0.85 + pulse * 0.12;
 
     this._msgTimer += dt;
     if (this._msgTimer > this._msgInterval) {

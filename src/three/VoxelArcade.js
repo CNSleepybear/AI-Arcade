@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
 import { ArcadeMachine } from './ArcadeMachine.js';
 import { GAME_REGISTRY } from '../games/registry.js';
+import { nightshiftTiles } from './NightshiftArt.js';
 
 /**
  * VoxelArcade — Gemini-style "Hive Arcade" (蜂巢游戏厅).
@@ -32,7 +33,7 @@ export class VoxelArcade {
 
   // ==================== Floor ====================
   _buildFloor() {
-    const tex = PixelTextureGenerator.woodFloor();
+    const tex = nightshiftTiles();
     tex.repeat.set(9, 10);
     const geo = new THREE.PlaneGeometry(9, 10);
     const mat = new THREE.MeshStandardMaterial({
@@ -67,12 +68,12 @@ export class VoxelArcade {
 
   // ==================== Walls ====================
   _buildWalls() {
-    const wallTex = PixelTextureGenerator.plasterWall();
+    const wallTex = PixelTextureGenerator.geminiPixel(0x35445b, 5, 3);
     const wallMat = new THREE.MeshStandardMaterial({
       map: wallTex,
       roughness: 0.9,
       metalness: 0.02,
-      color: 0xddd5c0
+      color: 0xd0dcea
     });
 
     const buildWall = (x, y, z, w, h, d, rotY = 0) => {
@@ -100,7 +101,7 @@ export class VoxelArcade {
     // Ceiling
     const ceilGeo = new THREE.PlaneGeometry(9, 10);
     const ceilMat = new THREE.MeshStandardMaterial({
-      color: 0xd4c8ad,
+      color: 0x243045,
       roughness: 0.95,
       metalness: 0.02
     });
@@ -192,21 +193,21 @@ export class VoxelArcade {
   // ==================== Ambient Lighting ====================
   _buildAmbientLighting() {
     // Warm central fill
-    const ambientArcade = new THREE.PointLight(0xffcc88, 6, 9, 2);
+    const ambientArcade = new THREE.PointLight(0x8dbdce, 7, 11, 2);
     ambientArcade.position.set(10.5, 1.5, 0);
     this.group.add(ambientArcade);
 
     // Floor strip lights (warm amber)
     for (let x = 7; x <= 14; x += 3) {
       for (const z of [-4.5, 4.5]) {
-        const stripLight = new THREE.PointLight(0xff8844, 3, 3, 2);
+        const stripLight = new THREE.PointLight(z < 0 ? 0x72d9ce : 0xafa0e8, 3, 3.5, 2);
         stripLight.position.set(x, 0.2, z);
         this.group.add(stripLight);
       }
     }
 
     // East wall glow (warm)
-    const eastGlow = new THREE.PointLight(0xffaa66, 8, 5, 2);
+    const eastGlow = new THREE.PointLight(0x82b9ce, 8, 6, 2);
     eastGlow.position.set(14, 1.8, 0);
     this.group.add(eastGlow);
   }
@@ -325,7 +326,7 @@ export class VoxelArcade {
 
     for (const strip of this._redstoneStrips) {
       const baseFlicker = 0.5 + 0.5 * Math.sin(t * 4 + strip.phase);
-      const glitch = Math.random() < 0.08 ? 2.0 : 0;
+      const glitch = Math.sin(t * 0.63 + strip.phase) > 0.998 ? 0.14 : 0;
       const intensity = (baseFlicker * strip.baseIntensity) + glitch;
 
       strip.material.color.setRGB(

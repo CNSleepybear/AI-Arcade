@@ -7,6 +7,7 @@ import { VoxelArcade } from './VoxelArcade.js';
 import { VoxelDepths } from './VoxelDepths.js';
 import { VoxelRooftop } from './VoxelRooftop.js';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
+import { NightshiftArt } from './NightshiftArt.js';
 
 /**
  * AbyssWorld — Master world assembler for the Gemini-style pixel arcade.
@@ -44,6 +45,7 @@ export class AbyssWorld {
     this._buildVoxelDecorations();
     this._buildConnectingPassages();
     this._buildSanctuaryGateway();
+    this.artDirection = new NightshiftArt(this);
 
     // Ambient sound loops
     this._startAmbientLoops();
@@ -73,7 +75,7 @@ export class AbyssWorld {
 
   // ==================== Outer Boundary Walls ====================
   _buildOuterWalls() {
-    const wallTex = PixelTextureGenerator.plasterWall();
+    const wallTex = PixelTextureGenerator.geminiPixel(0x35445b, 5, 3);
     const wallMat = new THREE.MeshStandardMaterial({
       map: wallTex, roughness: 0.95, metalness: 0.02
     });
@@ -96,9 +98,9 @@ export class AbyssWorld {
     const passageMat = new THREE.MeshStandardMaterial({
       map: passageTex, roughness: 0.85, metalness: 0.05
     });
-    const wallTex = PixelTextureGenerator.plasterWall();
+    const wallTex = PixelTextureGenerator.geminiPixel(0x35445b, 5, 3);
     const wallMat = new THREE.MeshStandardMaterial({
-      map: wallTex, roughness: 0.9, metalness: 0.02, color: 0xddd5c0
+      map: wallTex, roughness: 0.9, metalness: 0.02, color: 0xd0dcea
     });
 
     const buildPassage = (cx) => {
@@ -249,15 +251,15 @@ export class AbyssWorld {
   // ==================== Global Lighting (Gemini Warm Style) ====================
   _buildGlobalLighting() {
     // Warm ambient — reduced for pixel-style deeper shadows
-    const ambient = new THREE.AmbientLight(0xfff5ea, 0.65);
+    const ambient = new THREE.AmbientLight(0xb5c8e0, 0.5);
     this.scene.add(ambient);
 
     // Hemisphere — warm top, dark bottom
-    const hemi = new THREE.HemisphereLight(0xffeedd, 0x1a1008, 0.35);
+    const hemi = new THREE.HemisphereLight(0xaabbd5, 0x0b1120, 0.45);
     this.scene.add(hemi);
 
     // Warm fog (matching v3 cozy room) — stored for dynamic switching
-    this._surfaceFog = new THREE.Fog(0x332a22, 8, 30);
+    this._surfaceFog = new THREE.Fog(0x182133, 10, 34);
     this._depthsFog = new THREE.Fog(0x0a0a1f, 6, 22);
     this._rooftopFog = new THREE.Fog(0x040412, 12, 55);
     this._sanctuaryFog = new THREE.Fog(0x0a0a1e, 8, 28);
@@ -265,6 +267,8 @@ export class AbyssWorld {
 
     // Main directional — cool moonlight through windows
     const dir = new THREE.DirectionalLight(0xaaccee, 1.2);
+    dir.name='SurfaceMoonlight';
+    this._globalShadowLight=dir;
     dir.position.set(-4, 6, 2);
     dir.castShadow = true;
     dir.shadow.mapSize.width = 1024;
@@ -349,12 +353,26 @@ export class AbyssWorld {
   }
 
   // ==================== Update ====================
-  update(dt, playerPos) {
-    if (this.tavern?.update) this.tavern.update(dt, playerPos);
-    if (this.plaza?.update) this.plaza.update(dt);
-    if (this.arcade?.update) this.arcade.update(dt);
-    if (this.rooftop?.update) this.rooftop.update(dt);
-    if (this.sanctuary?.update) this.sanctuary.update(dt);
+  update(dt, playerPos, floor = 'SURFACE') {
+    if(this._activeFloor!==floor) {
+      this._activeFloor=floor;
+      for(const zone of [this.plaza,this.tavern,this.arcade])zone.group.visible=floor==='SURFACE';
+      this.depths.group.visible=floor==='DEPTHS';this.rooftop.group.visible=floor==='ROOFTOP';this.sanctuary.group.visible=floor==='SANCTUARY';
+      this.scene.fog=({SURFACE:this._surfaceFog,DEPTHS:this._depthsFog,ROOFTOP:this._rooftopFog,SANCTUARY:this._sanctuaryFog})[floor] || this._surfaceFog;
+      this.scene.background.set(floor==='ROOFTOP'?0x040412:floor==='DEPTHS'?0x0a0a1f:0x182133);
+      // The surface shadow camera does not cover rooms above/below the plaza.
+      this._globalShadowLight.castShadow=floor==='SURFACE';
+    }
+    if (floor === 'SURFACE') {
+      this.artDirection?.update(dt);
+      this.tavern?.update(dt, playerPos);
+      this.plaza?.update(dt);
+      this.arcade?.update(dt);
+    } else if (floor === 'ROOFTOP') {
+      this.rooftop?.update(dt);
+    } else if (floor === 'SANCTUARY') {
+      this.sanctuary?.update(dt, playerPos);
+    }
   }
 
   // ==================== Audio Control ====================

@@ -194,9 +194,14 @@ export const EVE_RESPONSES = getEveResponses();
  * @param {Record<string, string|number>} [vars]
  * @returns {string}
  */
+const lastPicks = new Map();
 export function pickResponse(templates, vars = {}) {
   if (!templates || templates.length === 0) return '...';
-  let text = templates[Math.floor(Math.random() * templates.length)];
+  const key=templates.join('\u0000'),previous=lastPicks.get(key);
+  let index=Math.floor(Math.random()*templates.length);
+  if(templates.length>1&&index===previous)index=(index+1+Math.floor(Math.random()*(templates.length-1)))%templates.length;
+  lastPicks.set(key,index);if(lastPicks.size>80)lastPicks.delete(lastPicks.keys().next().value);
+  let text = templates[index];
   for (const [key, val] of Object.entries(vars)) {
     text = text.replaceAll(`{${key}}`, String(val));
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { voxelPart } from './VoxelRig.js';
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -20,6 +21,7 @@ export class PlayerAvatar {
     this.group.name = 'PlayerAvatar';
 
     this._buildBlockyBody();
+    this._buildSuitDetails();
     this._buildCollisionCapsule();
     this._buildShadowDisc();
 
@@ -106,6 +108,18 @@ export class PlayerAvatar {
     this.rightLeg.position.set(0.1, 0.1, 0);
     this.rightLeg.castShadow = true;
     this.group.add(this.rightLeg);
+  }
+
+  _buildSuitDetails() {
+    const accent = ({ null: 0x79d9ce, chrome: 0xe8b47e, phantom: 0xafa0e8 })[this.data.id] ?? 0x79d9ce;
+    this.body.add(voxelPart('signal-runner-jacket', [
+      [-.15, .02, -.134, .065, .4, .025, 0x36465b], [.15, .02, -.134, .065, .4, .025, 0x36465b],
+      [0, -.19, -.14, .38, .045, .035, 0x405167], [0, -.19, -.165, .07, .055, .02, 0xb6b7a3],
+      [0, .1, -.14, .1, .12, .025, 0x192a3c], [0, .1, -.158, .055, .055, .015, accent],
+      [-.13, .2, -.139, .075, .02, .02, accent], [.13, .2, -.139, .075, .02, .02, accent],
+    ]));
+    this.headBase.add(voxelPart('signal-receiver', [[-.217, 0, 0, .045, .14, .13, 0x405167], [-.245, .02, 0, .014, .065, .06, accent]]));
+    for(const arm of [this.leftArm,this.rightArm]) arm.add(voxelPart('sleeve-cuff', [[0,-.16,0,.175,.06,.175,0x405167],[0,-.16,-.09,.1,.025,.014,accent]]));
   }
 
   // ==================== Collision Capsule ====================

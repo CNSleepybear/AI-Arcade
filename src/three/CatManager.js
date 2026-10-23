@@ -33,7 +33,7 @@ const CAT_PLACEMENTS = [
   {
     breed: 'blue_white',
     zone: 'ROOFTOP',
-    pos: [1, 0, -1],
+    pos: [1, 12, -1],
     bounds: { xMin: -4.5, xMax: 4.5, zMin: -4.5, zMax: 4.5 },
   },
 ];
@@ -71,6 +71,7 @@ export class CatManager {
       const spawnPos = new THREE.Vector3(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
       const cat = new Cat(cfg.breed, spawnPos, cfg.bounds);
       this.cats.push(cat);
+      cat.group.visible = cfg.zone === 'SURFACE';
       scene.add(cat.group);
     }
   }

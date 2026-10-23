@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildHands, updateHands, gesture } from './HandRig.js';
 
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 const PI_2 = Math.PI / 2;
@@ -43,103 +44,13 @@ export class FirstPersonCamera {
   // data objects — arcade cabinets, memory pillars, the altar. Between
   // interactions, you are pure signal, invisible even to yourself.
   //
-  // Camera: FOV=55°, near=0.08, aspect≈16:9.
-  // At Z=-0.45: visible Y≈±0.23, visible X≈±0.42.
-  //
-  // Hands at rest (visible): screen_x≈±0.35, screen_y≈-0.80
-  //   → world: X≈±0.15, Y≈-0.19, Z=-0.45
-  // Hands hidden (below screen): Y≈-0.35 (screen_y≈-1.5)
-  _buildHands() {
-    const HAND_Z = -0.45;
+  // HandRig owns articulated fingers, context gestures, view sway and adaptive
+  // placement inside the camera frustum. The interaction API stays unchanged.
+  _buildHands() { buildHands(this); }
 
-    // ── Materials ──
-    const skinMat = new THREE.MeshBasicMaterial({ color: 0x4a4a6a });
-    const palmMat = new THREE.MeshBasicMaterial({ color: 0x555580 });
-    const edgeMat = new THREE.LineBasicMaterial({
-      color: 0x55ddcc, transparent: true, opacity: 0.4
-    });
+  _updateHands(dt, isMoving) { updateHands(this, dt, isMoving); }
 
-    /** Voxel block with neon edge-wireframe */
-    const voxel = (w, h, d, mat) => {
-      const geo = new THREE.BoxGeometry(w, h, d);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
-      return mesh;
-    };
-
-    // ── Right Hand ──
-    this._rHand = new THREE.Group();
-    this._rHand.position.set(0.15, -0.35, HAND_Z); // start hidden below screen
-    this._rHand.visible = false;
-    this.camera.add(this._rHand);
-
-    const rPalm = voxel(0.075, 0.06, 0.065, skinMat);
-    this._rHand.add(rPalm);
-
-    const rThumb = voxel(0.022, 0.04, 0.022, palmMat);
-    rThumb.position.set(-0.045, -0.005, 0); // inner edge
-    this._rHand.add(rThumb);
-
-    // ── Left Hand ──
-    this._lHand = new THREE.Group();
-    this._lHand.position.set(-0.15, -0.35, HAND_Z);
-    this._lHand.visible = false;
-    this.camera.add(this._lHand);
-
-    const lPalm = voxel(0.075, 0.06, 0.065, skinMat);
-    this._lHand.add(lPalm);
-
-    const lThumb = voxel(0.022, 0.04, 0.022, palmMat);
-    lThumb.position.set(0.045, -0.005, 0); // inner edge
-    this._lHand.add(lThumb);
-
-    // ── Animation state ──
-    this._handsVisible = false;       // target state
-    this._handsAnim = 0;              // 0=hidden, 1=visible (lerp factor)
-    this._handsTargetY = -0.19;       // world Y when fully visible
-    this._handsHiddenY = -0.35;       // world Y when hidden
-    this._idlePhase = Math.random() * Math.PI * 2;
-  }
-
-  /**
-   * Per-frame update: float animation + idle sway when visible.
-   * Called from main.js render loop.
-   */
-  _updateHands(dt, _isMoving) {
-    this._idlePhase += dt;
-
-    // Smooth lerp toward target animation state
-    const lerpSpeed = 3.5; // ~0.6s transition
-    if (this._handsVisible) {
-      this._handsAnim = Math.min(1, this._handsAnim + dt * lerpSpeed);
-    } else {
-      this._handsAnim = Math.max(0, this._handsAnim - dt * lerpSpeed);
-    }
-
-    if (this._handsAnim <= 0.001) {
-      // Fully hidden
-      if (this._rHand.visible) { this._rHand.visible = false; this._lHand.visible = false; }
-      return;
-    }
-
-    // Make visible
-    this._rHand.visible = true;
-    this._lHand.visible = true;
-
-    // Ease-out for float-up
-    const t = 1 - Math.pow(1 - this._handsAnim, 3);
-    const baseY = this._handsHiddenY + (this._handsTargetY - this._handsHiddenY) * t;
-
-    // Gentle hover sway when visible
-    const sway = Math.sin(this._idlePhase * 1.3) * 0.015;
-    const bob  = Math.sin(this._idlePhase * 0.7 + 0.8) * 0.01;
-    const y = baseY + sway;
-
-    this._rHand.position.y = y + bob;
-    this._lHand.position.y = y - bob; // opposite bob for organic feel
-    this._rHand.position.x = 0.15 + Math.sin(this._idlePhase * 0.9) * 0.008;
-    this._lHand.position.x = -0.15 - Math.sin(this._idlePhase * 0.9) * 0.008;
-  }
+  gesture(kind) { gesture(this, kind); }
 
   /** Show hands — call when near an interactable */
   showHands() {
@@ -153,7 +64,7 @@ export class FirstPersonCamera {
 
   /** Hide/show entire hand rigs (for sitting transitions) */
   setHandsVisible(visible) {
-    if (!visible) { this._handsVisible = false; this._handsAnim = 0; }
+    if (!visible) { this._handsVisible = false; this._handsAnim = 0; this._handGesture = null; }
     if (this._rHand) this._rHand.visible = visible;
     if (this._lHand) this._lHand.visible = visible;
   }
@@ -165,6 +76,8 @@ export class FirstPersonCamera {
     this.yaw -= dx * this.sensitivityX;
     this.pitch -= dy * this.sensitivityY;
     this.pitch = THREE.MathUtils.clamp(this.pitch, this.minPitch, this.maxPitch);
+    this._lookSway.x = THREE.MathUtils.clamp(this._lookSway.x - dx * .0002, -.045, .045);
+    this._lookSway.y = THREE.MathUtils.clamp(this._lookSway.y - dy * .00015, -.035, .035);
   }
 
   getForwardFlat() {

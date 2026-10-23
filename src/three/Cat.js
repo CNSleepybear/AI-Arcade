@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { t } from '../data/i18n.js';
+import { buildCatRig, updateCatRig } from './CatRig.js';
 
 /**
  * Cat — voxel-style cat with wander AI and idle animations.
@@ -75,71 +76,7 @@ export class Cat {
   }
 
   // ==================== Voxel Model ====================
-  _buildModel() {
-    const d = this.def;
-
-    // Body
-    const bodyMat = new THREE.MeshStandardMaterial({ color: d.body, roughness: 0.8 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.25, 0.6), bodyMat);
-    body.position.y = 0.2;
-    body.castShadow = true;
-    body.name = 'body';
-    this.group.add(body);
-
-    // Head
-    const headMat = new THREE.MeshStandardMaterial({ color: d.head, roughness: 0.8 });
-    this._head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.26), headMat);
-    this._head.position.set(0, 0.38, -0.25);
-    this._head.castShadow = true;
-    this._head.name = 'head';
-    this.group.add(this._head);
-
-    // Ears
-    const earMat = new THREE.MeshStandardMaterial({ color: d.ear, roughness: 0.8 });
-    for (const sx of [-0.08, 0.08]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), earMat);
-      ear.position.set(sx, 0.52, -0.25);
-      ear.rotation.x = -0.2;
-      this.group.add(ear);
-    }
-
-    // Eyes (small glowing pixels)
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 });
-    for (const sx of [-0.06, 0.06]) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.02), eyeMat);
-      eye.position.set(sx, 0.42, -0.37);
-      this.group.add(eye);
-    }
-
-    // Nose
-    const noseMat = new THREE.MeshBasicMaterial({ color: 0xff8888 });
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.02), noseMat);
-    nose.position.set(0, 0.36, -0.37);
-    this.group.add(nose);
-
-    // Legs
-    const legMat = new THREE.MeshStandardMaterial({ color: d.body, roughness: 0.8 });
-    const legPositions = [
-      [-0.1, 0.08, 0.18], [0.1, 0.08, 0.18],
-      [-0.1, 0.08, -0.18], [0.1, 0.08, -0.18],
-    ];
-    this._legs = [];
-    for (const [lx, ly, lz] of legPositions) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.08), legMat);
-      leg.position.set(lx, ly, lz);
-      leg.castShadow = true;
-      this.group.add(leg);
-      this._legs.push(leg);
-    }
-
-    // Tail
-    const tailMat = new THREE.MeshStandardMaterial({ color: d.tail, roughness: 0.8 });
-    this._tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.5), tailMat);
-    this._tail.position.set(0, 0.28, 0.32);
-    this._tail.rotation.x = -0.6;
-    this._tail.name = 'tail';
-    this.group.add(this._tail);
-  }
+  _buildModel() { buildCatRig(this); }
 
   // ==================== Update ====================
   update(dt, playerPos) {
@@ -195,23 +132,7 @@ export class Cat {
       this.group.position.z, this.bounds.zMin, this.bounds.zMax
     );
 
-    // Tail wag animation
-    this._tailWagPhase += dt * (this._isSitting ? 2 : 4);
-    this._tail.rotation.z = Math.sin(this._tailWagPhase) * 0.3;
-    this._tail.rotation.x = -0.6 + Math.sin(this._tailWagPhase * 1.5) * 0.2;
-
-    // Idle bob when sitting
-    if (this._isSitting) {
-      this._bobPhase += dt * 2;
-      this._head.position.y = 0.38 + Math.sin(this._bobPhase) * 0.02;
-    } else {
-      this._head.position.y = 0.38;
-    }
-
-    // Leg wiggle when sitting
-    for (const leg of this._legs) {
-      leg.visible = !this._isSitting;
-    }
+    updateCatRig(this, dt, playerPos);
   }
 
   _pickNewWanderTarget() {
@@ -232,7 +153,7 @@ export class Cat {
     // Face the player
     const dx = playerPos.x - this.group.position.x;
     const dz = playerPos.z - this.group.position.z;
-    this.group.rotation.y = Math.atan2(dx, dz);
+    this.group.rotation.y = Math.atan2(dx, dz) + Math.PI;
 
     // Use fresh cat defs so language changes are reflected
     const defs = getCatDefs();
@@ -252,25 +173,7 @@ export class Cat {
     };
   }
 
-  _doJump() {
-    const startY = this.group.position.y;
-    const jumpHeight = 0.15;
-    const duration = 0.3;
-    let elapsed = 0;
-
-    const animate = () => {
-      elapsed += 0.016;
-      const t = elapsed / duration;
-      if (t >= 1) {
-        this.group.position.y = startY;
-        return;
-      }
-      // Parabolic jump
-      this.group.position.y = startY + jumpHeight * (1 - (2 * t - 1) * (2 * t - 1));
-      requestAnimationFrame(animate);
-    };
-    animate();
-  }
+  _doJump() { this._petAnimation = 1.4; this._isSitting = true; this._idleTimer = 1.8; }
 
   /** 3D distance from world position to cat */
   distanceTo(worldPos) {

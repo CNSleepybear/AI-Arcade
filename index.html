@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Arcade</title>
   <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="/src/nightshift.css" />
 </head>
 <body>
   <!-- ==================== Language Switcher (fixed top-right) ==================== -->
@@ -25,14 +26,17 @@
 
   <!-- ==================== Title Screen ==================== -->
   <div id="title-screen" class="hidden">
+    <div class="title-topline"><span class="arcade-wordmark"><i></i> ABYSS / ARCADE</span><span class="title-edition">NIGHTSHIFT EDITION · 01</span></div>
     <div id="title-inner">
+      <div class="title-eyebrow"><span class="status-dot"></span><span data-i18n="art.after_hours">营业中 · 深夜不打烊</span><span class="title-index">// 001</span></div>
       <div id="title-subtitle" data-i18n="title.subtitle">AI 梦境街机馆</div>
       <h1 id="title-main" data-i18n="title.main">AI ARCADE</h1>
       <div id="title-underline"></div>
+      <p class="title-description" data-i18n="art.description">城市睡去之后，故事才刚刚开始。<br>投一枚硬币，走进霓虹与梦的交界。</p>
       <div id="title-stats">
         <div class="title-stat">
           <span class="title-stat-label" data-i18n="title.games_unlocked">已解锁游戏</span>
-          <span class="title-stat-val" id="ts-games-unlocked">1</span>/<span id="ts-games-total">3</span>
+          <span class="title-stat-number"><span class="title-stat-val" id="ts-games-unlocked">1</span><span class="stat-denominator">/ <span id="ts-games-total">3</span></span></span>
         </div>
         <div class="title-stat">
           <span class="title-stat-label" data-i18n="title.global_score">全球分数</span>
@@ -40,7 +44,7 @@
         </div>
         <div class="title-stat">
           <span class="title-stat-label" data-i18n="title.memory_shards">记忆碎片</span>
-          <span class="title-stat-val" id="ts-shards">0</span>/3
+          <span class="title-stat-number"><span class="title-stat-val" id="ts-shards">0</span><span class="stat-denominator">/ 3</span></span>
         </div>
       </div>
       <div id="title-buttons">
@@ -51,21 +55,28 @@
       <div id="title-press-enter" data-i18n="title.press_enter">或按 ENTER 进入</div>
       <div id="title-version" data-i18n="title.version">v1.0.0 · Three.js · Supabase</div>
     </div>
+    <figure class="title-artwork" aria-label="Isometric pixel arcade illustration">
+      <div class="artwork-coordinate">35° 41′ N / THE ABYSS</div>
+      <canvas id="title-art-canvas" width="640" height="520" aria-hidden="true"></canvas>
+      <figcaption><span class="status-dot"></span><span data-i18n="art.caption">在世界的尽头，留一盏灯。</span><span class="artwork-number">FIG. 01</span></figcaption>
+    </figure>
+    <div class="title-bottomline"><span data-i18n="art.footer">独立游戏 · 自由探索 · 偶遇一只猫</span><span>INSERT COIN. STAY A WHILE. <b>↗</b></span></div>
   </div>
   <div id="title-dissolve" class="hidden"></div>
 
   <!-- ==================== System Boot Animation ==================== -->
-  <div id="system-boot" class="hidden">
+  <div id="system-boot">
     <div class="boot-noise"></div>
     <div class="boot-grid"></div>
     <div class="boot-container" id="bootContainer">
+      <div class="boot-visual" aria-hidden="true"><div class="boot-orbit orbit-one"></div><div class="boot-orbit orbit-two"></div><div class="boot-monogram"><i></i><i></i><i></i><i></i></div><span>EST. IN THE ABYSS</span></div>
       <div class="boot-frame">
         <div class="boot-corner tl"></div>
         <div class="boot-corner tr"></div>
         <div class="boot-corner bl"></div>
         <div class="boot-corner br"></div>
       </div>
-      <div class="boot-logo">AI ARCADE</div>
+      <div class="boot-logo">AI ARCADE<span>NIGHTSHIFT / SYSTEM 01</span></div>
       <div class="boot-subtitle" data-i18n="boot.subtitle">/// THE ABYSS UNIVERSE ///</div>
       <div class="boot-terminal" id="bootTerminal">
         <span id="terminalOutput"></span>
@@ -120,10 +131,13 @@
         </div>
       </div>
       <div id="hud-score"><span>🪙</span><span id="hud-coins">0</span></div>
-      <div id="hud-score" style="margin-left:6px"><span>🏆</span><span id="hud-global-score">0</span></div>
+      <div id="hud-global-score-wrap"><span>🏆</span><span id="hud-global-score">0</span></div>
       <button id="hud-btn-logout" class="hud-no-pointer" data-i18n="hud.logout">登出</button>
       <div id="hud-buff" class="hidden"></div>
     </div>
+
+    <div id="district-hud" class="hud-no-pointer" aria-live="polite"><span class="district-code">01 / SURFACE</span><span id="district-name">禁区广场</span><span class="district-caption">THE ABYSS · NIGHTSHIFT</span></div>
+    <div id="aim-reticle" aria-hidden="true"><i></i></div>
 
     <div id="prompt" class="hidden hud-no-pointer"></div>
 
@@ -227,6 +241,7 @@
           <button id="escape-btn-quit" class="escape-menu-btn danger" data-i18n="escape.quit">退出游戏</button>
         </div>
         <div id="escape-menu-hint" data-i18n="escape.hint">按 ESC 继续</div>
+        <label class="sfx-setting" for="sfx-volume"><span data-i18n="art.sfx_volume">音效音量</span><input id="sfx-volume" type="range" min="0" max="100" value="65" /></label>
       </div>
     </div>
 
@@ -234,19 +249,23 @@
     <div id="eve-phone" class="eve-phone-hidden">
       <div id="eve-phone-frame">
         <div id="eve-phone-notch"></div>
+        <div class="eve-terminal-top"><span id="eve-portrait-label">E.V.E. / LOCAL COMPANION</span><span>UNIT 07</span></div>
         <div id="eve-phone-header">
           <div id="eve-avatar-wrap">
-            <canvas id="eve-avatar-canvas" width="48" height="48"></canvas>
+            <canvas id="eve-avatar-canvas" width="96" height="96" role="img" aria-label="E.V.E. digital companion portrait"></canvas>
             <img id="eve-avatar-img" src="" alt="E.V.E." style="display:none" />
             <div id="eve-mode-indicator" class="eve-mode-offline"></div>
           </div>
-          <div id="eve-name">E.V.E.</div>
+          <div class="eve-identity"><div id="eve-name">E.V.E.</div><div class="eve-role" data-i18n="art.eve_role">你的午夜同行者</div><div id="eve-mode-label">MODE / LOCAL</div></div>
           <button id="eve-settings-gear" data-i18n-title="eve.settings_gear_title" title="设置">⚙</button>
           <button id="eve-phone-close" data-i18n-title="eve.close_title" title="关闭">✕</button>
         </div>
         <div id="eve-phone-body">
-          <div id="eve-bubble" data-i18n="eve.listening">E.V.E. 正在监听街机厅...</div>
+          <div class="eve-signal-line"><span class="status-dot"></span><span id="eve-state-label" data-i18n="art.eve_idle">正在聆听</span><span class="eve-signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div id="eve-bubble" aria-live="polite" data-i18n="eve.listening">E.V.E. 正在监听街机厅...</div>
         </div>
+        <div class="eve-terminal-footer"><span id="eve-location" data-i18n="art.plaza">禁区广场</span><button id="eve-previous" disabled><span data-i18n="art.eve_previous">上一条</span> <span id="eve-message-count">00</span> ↶</button></div>
+        <form id="eve-chat-form"><input id="eve-chat-input" maxlength="300" autocomplete="off" data-i18n-placeholder="art.eve_ask" data-i18n-title="art.eve_ask" placeholder="问问 E.V.E.…" aria-label="Ask E.V.E." /><button type="submit" data-i18n="art.eve_send">发送</button></form>
       </div>
     </div>
 
@@ -296,208 +315,8 @@
 
   </div>
 
+  <script type="module" src="/src/ui/BootSequence.js"></script>
   <script type="module" src="/src/main.js"></script>
 
-  <!-- ==================== Boot Animation Script ==================== -->
-  <script>
-    (function() {
-      const systemBoot = document.getElementById('system-boot');
-      const bootContainer = document.getElementById('bootContainer');
-      const terminalOutput = document.getElementById('terminalOutput');
-      const bootCursor = document.getElementById('bootCursor');
-      const progressFill = document.getElementById('progressFill');
-      const progressPercent = document.getElementById('progressPercent');
-      const statusText = document.getElementById('statusText');
-      const bootFlash = document.getElementById('bootFlash');
-      const skipBtn = document.getElementById('skipBootBtn');
-
-      // Hardcoded cyberpunk boot lines (language-independent tech jargon)
-      const BOOT_LINES = [
-        '/// AI ARCADE SYSTEM v1.0 ///',
-        '> INITIALIZING: Deep Abyss Network...',
-        '> CONNECTING: Game Instance Cluster...',
-        '> LOADING: Neural Juice Pipeline...',
-        '> MOUNTING: Roguelike Core Engine...',
-        '> SYNC: Player Preference Matrix...',
-        '> WARMING: Neon Void Shaders...',
-        '> STATUS: ALL SYSTEMS NOMINAL'
-      ];
-
-      let timers = [];
-      let isBooting = false;
-      let _animationDone = false;  // typewriter + bar animation finished
-      let _arcadeReady = false;    // main.js signaled ready
-
-      function clearTimers() {
-        timers.forEach(t => clearTimeout(t));
-        timers = [];
-      }
-
-      function checkAndFinish() {
-        if (_animationDone && _arcadeReady && isBooting) {
-          doFinishBoot();
-        }
-      }
-
-      function startTerminal() {
-        let lineIndex = 0;
-        terminalOutput.innerHTML = '';
-        let _loadingStarted = false;
-
-        function typeLine() {
-          if (lineIndex >= BOOT_LINES.length || !isBooting) {
-            // All lines done — make sure loading is running
-            if (isBooting && !_loadingStarted) startLoading();
-            return;
-          }
-          // Start progress bar after first 2 lines, while remaining text types
-          if (!_loadingStarted && lineIndex >= 2) {
-            _loadingStarted = true;
-            startLoading();
-          }
-          const line = BOOT_LINES[lineIndex];
-          const div = document.createElement('div');
-          div.className = 'boot-line';
-          div.style.animationDelay = '0s';
-          div.textContent = '';
-          terminalOutput.appendChild(div);
-
-          let c = 0;
-          function typeChar() {
-            if (!isBooting) return;
-            if (c < line.length) {
-              div.textContent += line[c];
-              c++;
-              const t = setTimeout(typeChar, 18 + Math.random() * 25);
-              timers.push(t);
-            } else {
-              lineIndex++;
-              const t = setTimeout(typeLine, 80);
-              timers.push(t);
-            }
-          }
-          typeChar();
-        }
-        typeLine();
-      }
-
-      function startLoading() {
-        statusText.textContent = 'LOADING';
-        let _displayedProgress = 0;
-        const interval = 50;
-        const totalLines = BOOT_LINES.length;
-        // Typewriter drives first ~70%, real loading the rest
-        const typewriterShare = 70;
-
-        function updateProgress() {
-          if (!isBooting) return;
-
-          // --- Target from typewriter progress ---
-          // Count how many lines have been fully typed
-          const typedLines = terminalOutput.querySelectorAll('.boot-line').length;
-          const lastLine = terminalOutput.lastChild;
-          let lastLineProgress = 0;
-          if (lastLine && lastLine.textContent) {
-            const currentLineIdx = typedLines - 1;
-            const targetLine = BOOT_LINES[currentLineIdx] || '';
-            if (targetLine.length > 0) {
-              lastLineProgress = Math.min(1, lastLine.textContent.length / targetLine.length);
-            }
-          }
-          // Fraction through all lines: fully typed lines + partial current line
-          const typewriterFrac = (typedLines - 1 + lastLineProgress) / totalLines;
-          const typewriterTarget = Math.floor(typewriterFrac * typewriterShare);
-
-          // --- Target from real loading ---
-          const realProgress = window.__arcadeProgress;
-          let realTarget = 0;
-          if (typeof realProgress === 'number' && realProgress > 0) {
-            // Map real progress (0-100) to remaining share (typewriterShare to 100)
-            realTarget = typewriterShare + (realProgress / 100) * (100 - typewriterShare);
-          }
-
-          // Bar is driven by typewriter; real loading only pulls ahead if ready
-          let target = typewriterTarget;
-          if (_arcadeReady) {
-            // Real loading done: allow typewriter to finish, then go to 100
-            target = Math.max(typewriterTarget, realTarget);
-          }
-          target = Math.min(target, 99);
-
-          // Smooth interpolate
-          const lerpSpeed = 0.12;
-          _displayedProgress += (target - _displayedProgress) * lerpSpeed;
-          if (Math.abs(target - _displayedProgress) < 0.5) {
-            _displayedProgress = target;
-          }
-          // Only snap to 100 when both typewriter AND real loading are done
-          if (_arcadeReady && typewriterFrac >= 1 && _displayedProgress > 98) {
-            _displayedProgress = 100;
-          }
-
-          const display = Math.min(100, Math.floor(_displayedProgress));
-          progressFill.style.width = display + '%';
-          progressPercent.textContent = display + '%';
-
-          if (display >= 100) {
-            progressFill.style.width = '100%';
-            progressPercent.textContent = '100%';
-            statusText.textContent = 'READY';
-            _animationDone = true;
-            checkAndFinish();
-            return;
-          }
-
-          const t = setTimeout(updateProgress, interval);
-          timers.push(t);
-        }
-        updateProgress();
-      }
-
-      function doFinishBoot() {
-        isBooting = false;
-        clearTimers();
-        bootCursor.style.display = 'none';
-
-        const t1 = setTimeout(() => {
-          bootFlash.classList.add('trigger');
-          bootContainer.classList.add('boot-exit');
-
-          const t2 = setTimeout(() => {
-            systemBoot.classList.add('hidden');
-            bootFlash.classList.remove('trigger');
-            bootContainer.classList.remove('boot-exit');
-            const ls = document.getElementById('loading-screen');
-            if (ls && !ls.classList.contains('hidden')) ls.classList.add('fade-out');
-          }, 600);
-          timers.push(t2);
-        }, 400);
-        timers.push(t1);
-      }
-
-      function skip() {
-        isBooting = false;
-        clearTimers();
-        systemBoot.classList.add('hidden');
-        const ls = document.getElementById('loading-screen');
-        if (ls && !ls.classList.contains('hidden')) ls.classList.add('fade-out');
-      }
-
-      // Called by main.js when fully loaded
-      window.__signalArcadeReady = function() {
-        _arcadeReady = true;
-        window.__arcadeProgress = 100;
-        checkAndFinish();
-      };
-
-      skipBtn.addEventListener('click', skip);
-
-      // Auto-start on page load
-      isBooting = true;
-      systemBoot.classList.remove('hidden');
-      const t = setTimeout(() => startTerminal(), 300);
-      timers.push(t);
-    })();
-  </script>
 </body>
 </html>

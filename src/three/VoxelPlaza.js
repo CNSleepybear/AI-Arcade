@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
 import { t } from '../data/i18n.js';
+import { nightshiftTiles } from './NightshiftArt.js';
+import { drawDistrictBoard } from './DistrictBoard.js';
 
 /**
  * VoxelPlaza — Gemini-style "Forbidden Zone Plaza" (禁区广场) central hub.
@@ -32,7 +34,7 @@ export class VoxelPlaza {
 
   // ==================== Floor ====================
   _buildFloor() {
-    const tex = PixelTextureGenerator.woodFloor();
+    const tex = nightshiftTiles();
     tex.repeat.set(10, 10);
     const geo = new THREE.PlaneGeometry(10, 10);
     const mat = new THREE.MeshStandardMaterial({
@@ -48,7 +50,7 @@ export class VoxelPlaza {
 
   // ==================== Walls ====================
   _buildWalls() {
-    const wallTex = PixelTextureGenerator.plasterWall();
+    const wallTex = PixelTextureGenerator.geminiPixel(0x37455a, 5, 3);
 
     const buildWall = (x, y, z, w, h, d, rotY = 0) => {
       const geo = new THREE.BoxGeometry(w, h, d);
@@ -56,7 +58,7 @@ export class VoxelPlaza {
         map: wallTex,
         roughness: 0.9,
         metalness: 0.02,
-        color: 0xddd5c0
+        color: 0xd0dcea
       });
       const wall = new THREE.Mesh(geo, mat);
       wall.position.set(x, y + h / 2, z);
@@ -81,7 +83,7 @@ export class VoxelPlaza {
     // Ceiling
     const ceilGeo = new THREE.PlaneGeometry(10, 10);
     const ceilMat = new THREE.MeshStandardMaterial({
-      color: 0xd4c8ad,
+      color: 0x243045,
       roughness: 0.95,
       metalness: 0.02
     });
@@ -93,7 +95,7 @@ export class VoxelPlaza {
 
   // ==================== Warm Stone North Wall ====================
   _buildObsidianNorthWall() {
-    const stoneTex = PixelTextureGenerator.warmStone();
+    const stoneTex = PixelTextureGenerator.geminiPixel(0x465468, 6, 3);
 
     // Stacked stone blocks at Z = -5
     for (let bx = -4.5; bx <= 4.5; bx += 0.5) {
@@ -104,7 +106,7 @@ export class VoxelPlaza {
             map: stoneTex,
             roughness: 0.5,
             metalness: 0.15,
-            color: 0x998877
+            color: 0xc0cbd8
           })
         );
         block.position.set(bx, by + 0.25, -5);
@@ -129,7 +131,7 @@ export class VoxelPlaza {
     this.group.add(bezel);
 
     // Amber glow border strips
-    const stripMat = new THREE.MeshBasicMaterial({ color: 0xffaa44 });
+    const stripMat = new THREE.MeshBasicMaterial({ color: 0x79b9bb });
     const positions = [
       { x: 0, y: 4.05, w: 6.2, h: 0.04 },
       { x: 0, y: -0.05, w: 6.2, h: 0.04 },
@@ -167,120 +169,7 @@ export class VoxelPlaza {
   /**
    * Draw the cyber screen — Gemini pixel style with warm amber/gold tones.
    */
-  drawScreen(dt) {
-    const ctx = this.screenCtx;
-    const w = this.screenCanvas.width;
-    const h = this.screenCanvas.height;
-
-    // Dark warm background — slightly lighter for text contrast
-    ctx.fillStyle = '#12100c';
-    ctx.fillRect(0, 0, w, h);
-
-    // Scanlines
-    for (let y = 0; y < h; y += 3) {
-      ctx.fillStyle = 'rgba(0,0,0,0.12)';
-      ctx.fillRect(0, y, w, 1);
-    }
-
-    // ===== Left Panel: High Scores =====
-    const leftX = 30;
-    const leftW = w * 0.45;
-
-    ctx.fillStyle = '#886633';
-    ctx.fillRect(leftX, 20, leftW, 2);
-    ctx.fillStyle = '#ffcc44';
-    ctx.font = 'bold 32px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('◆ GLOBAL HIGH SCORES', leftX, 58);
-
-    const scores = this.globalState?.arcadeHighScores || {
-      anomaly: { name: 'MINER_X', score: 99 },
-      'cyber-hunder': { name: 'VOID_WALKER', score: 8500 }
-    };
-
-    const DISPLAY_NAMES = {
-      'anomaly': 'ANOMALY',
-      'cyber-hunder': 'CYBER HUNDER',
-      'dark-water-stealth': 'DARK WATER',
-      'leave-at-6pm-evolved': 'LEAVE AT 6PM'
-    };
-
-    let sy = 95;
-    for (const [game, data] of Object.entries(scores)) {
-      ctx.fillStyle = '#dd9944';
-      ctx.font = 'bold 22px monospace';
-      const displayName = DISPLAY_NAMES[game] || game.toUpperCase();
-      ctx.fillText(displayName, leftX, sy);
-      sy += 30;
-
-      ctx.fillStyle = '#ffdd88';
-      ctx.font = '20px monospace';
-      ctx.fillText(`#1  ${data.name.padEnd(16)} ${String(data.score).padStart(8)}`, leftX + 10, sy);
-      sy += 42;
-    }
-
-    // ===== Right Panel: Chat Messages =====
-    const rightX = w * 0.52;
-    const rightW = w * 0.44;
-
-    ctx.fillStyle = '#886633';
-    ctx.fillRect(rightX, 20, rightW, 2);
-
-    ctx.fillStyle = '#ffcc44';
-    ctx.font = 'bold 32px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('◆ WORLD CHAT', rightX, 58);
-
-    const messages = this.globalState?.chatMessages || [];
-    let my = 95;
-    const recentMsgs = messages.slice(-6);
-    for (const msg of recentMsgs) {
-      ctx.fillStyle = '#dd9944';
-      ctx.font = 'bold 18px monospace';
-      const time = new Date(msg.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-      ctx.fillText(`[${time}]`, rightX, my);
-
-      ctx.fillStyle = msg.color || '#ffdd88';
-      ctx.font = 'bold 18px monospace';
-      ctx.fillText(`${msg.author}:`, rightX + 72, my);
-
-      ctx.fillStyle = '#eeeedd';
-      ctx.font = '18px monospace';
-      const text = msg.text.length > 28 ? msg.text.slice(0, 26) + '..' : msg.text;
-      ctx.fillText(text, rightX + 72 + (msg.author.length + 1) * 11, my);
-      my += 30;
-    }
-
-    // ===== Bottom: Scrolling Ticker =====
-    this._scrollOffset += dt * 60;
-    const tickerY = h - 50;
-    ctx.fillStyle = '#0e0a06';
-    ctx.fillRect(0, tickerY - 5, w, 40);
-    ctx.fillStyle = '#ffcc44';
-    ctx.fillRect(0, tickerY - 6, w, 2);
-    ctx.fillRect(0, tickerY + 34, w, 2);
-
-    ctx.fillStyle = '#ffdd88';
-    ctx.font = 'bold 20px monospace';
-    ctx.textAlign = 'left';
-
-    const tickerText = '>>> NOW PLAYING: SHATTERED MEMORIES /// AI DREAMS IN EVERY PIXEL /// COLLECT ALL 3 SHARDS TO UNLOCK THE HIDDEN CABINET ///  ';
-    const textWidth = ctx.measureText(tickerText).width;
-    const scrollPhase = (this._scrollOffset % textWidth);
-
-    ctx.fillText(tickerText, -scrollPhase, tickerY + 18);
-    ctx.fillText(tickerText, -scrollPhase + textWidth, tickerY + 18);
-
-    // Occasional glitch
-    if (Math.random() < 0.03) {
-      const gx = Math.random() * w;
-      const gy = Math.random() * h;
-      ctx.fillStyle = 'rgba(255,170,68,0.3)';
-      ctx.fillRect(gx, gy, Math.random() * 200 + 20, 2);
-    }
-
-    this.screenTexture.needsUpdate = true;
-  }
+  drawScreen(dt) { drawDistrictBoard(this, dt); }
 
   setupRTT(fullScene, renderer) {
     this._rttTarget = new THREE.WebGLRenderTarget(256, 192, {
@@ -310,7 +199,7 @@ export class VoxelPlaza {
   // ==================== Ambient Lighting (Warm) ====================
   _buildAmbientLighting() {
     // Warm amber screen glow
-    const screenGlow = new THREE.PointLight(0xffaa44, 10, 12, 2);
+    const screenGlow = new THREE.PointLight(0x8bc5d1, 10, 12, 2);
     screenGlow.position.set(0, 2, -3);
     this.group.add(screenGlow);
 

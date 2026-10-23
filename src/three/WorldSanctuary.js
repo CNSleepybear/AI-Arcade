@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
+import { mergeStaticMeshes } from './VoxelRig.js';
 
 /**
  * WorldSanctuary — 万国馆: Museum hall with 7 snow globes.
@@ -21,14 +22,20 @@ function box(geo, mat, x, y, z, cast = false) {
   return m;
 }
 
-function b(m, x, y, z, w, h, d, cast = false) {
-  return box(new THREE.BoxGeometry(w, h, d), m, x, y, z, cast);
+function b(m, x, y, z, w, h, d, cast = false, modelShadow = false) {
+  const parent = cast?.isObject3D ? cast : null;
+  const mesh = box(new THREE.BoxGeometry(w, h, d), m, x, y, z, parent ? modelShadow : cast);
+  if (parent) parent.add(mesh);
+  return mesh;
 }
 
 // ═══════════════════ Materials ═══════════════════
 
+const materialCache = new Map();
 function std(c, r = 0.4, mt = 0) {
-  return new THREE.MeshStandardMaterial({ map: PixelTextureGenerator.geminiPixel(c, 8, 2), color: c, roughness: r, metalness: mt, flatShading: false });
+  const key = `${c}:${r}:${mt}`;
+  if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({ map: PixelTextureGenerator.geminiPixel(c, 8, 2), color: 0xffffff, roughness: r, metalness: mt }));
+  return materialCache.get(key);
 }
 function basic(c) { return new THREE.MeshBasicMaterial({ color: c }); }
 
@@ -63,6 +70,9 @@ class SnowGlobe {
     this.particles = this._buildParticles();
     this._buildSpot();
     this._buildLabel();
+    this.focus = new THREE.Mesh(new THREE.TorusGeometry(.82,.014,4,48),new THREE.MeshBasicMaterial({color:0x8edacc,transparent:true,opacity:.2}));
+    this.focus.rotation.x=-Math.PI/2;this.focus.position.y=.025;this.group.add(this.focus);
+    this.group.name=`Exhibit-${country.id}`;
   }
 
   _buildPedestal() {
@@ -76,8 +86,8 @@ class SnowGlobe {
 
   _buildGlass() {
     const g = this.group;
-    const glass = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, 16, 16),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.02, transparent: true, opacity: 0.12, flatShading: true, depthWrite: false }));
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, 24, 20),
+      new THREE.MeshStandardMaterial({ color: 0xb9d7e1, roughness: 0.16, metalness: 0.02, transparent: true, opacity: 0.055, depthWrite: false }));
     glass.position.y = 1.5;
     glass.renderOrder = 2;
     g.add(glass);
@@ -90,6 +100,7 @@ class SnowGlobe {
 
   _buildInner() {
     this.inner = new THREE.Group();
+    this.inner.name = `Miniature-${this.country.id}`;
     this.inner.position.y = 1.5;
     this.inner.scale.setScalar(0.22);
     this.group.add(this.inner);
@@ -99,6 +110,8 @@ class SnowGlobe {
 
     // Miniature models
     this._buildModel();
+    this.inner.userData.modelParts=this.inner.children.length;
+    mergeStaticMeshes(this.inner);
   }
 
   _buildModel() {
@@ -192,14 +205,15 @@ class SnowGlobe {
     const list = [];
     const geo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
     const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false });
+    this.particleMesh=new THREE.InstancedMesh(geo,mat,count);this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.particleMesh.frustumCulled=false;this.inner.add(this.particleMesh);
 
     for (let i = 0; i < count; i++) {
-      const m = new THREE.Mesh(geo, mat);
+      const m = new THREE.Object3D();
       this._resetParticle(m, type);
-      this.inner.add(m);
+      m.updateMatrix();this.particleMesh.setMatrixAt(i,m.matrix);
       list.push({ mesh: m, type, phase: Math.random() * 10 });
     }
-    return list;
+    this.particleMesh.instanceMatrix.needsUpdate=true;return list;
   }
 
   _resetParticle(m, type) {
@@ -242,25 +256,33 @@ class SnowGlobe {
     return Math.sqrt(dx * dx + dz * dz) < threshold;
   }
 
-  update(time) {
+  update(time, dt = 1/60, focused = false, reduced = false) {
     // Rotate inner scene
-    if (this.inner) this.inner.rotation.y = time * 0.15 + this.index * 0.5;
+    if (this.inner && !focused && !reduced) this.inner.rotation.y += dt * .09;
+    this.focus.material.opacity = focused ? .9 : .18;
+    this.focus.scale.setScalar(focused ? 1.04 : 1);
 
     // Animate particles
     for (const p of this.particles) {
+      if (reduced) break;
       const m = p.mesh;
+      const step = dt * 60;
       switch (p.type) {
-        case 'fall':   m.position.y -= 0.008; m.position.x += Math.sin(time + p.phase) * 0.002; break;
-        case 'fly':    m.position.x += Math.cos(time * 0.5 + p.phase) * 0.003; m.position.y += Math.sin(time + p.phase) * 0.002; m.position.z += Math.sin(time * 0.3 + p.phase) * 0.003; break;
-        case 'rain':   m.position.y -= 0.04; break;
-        case 'wind':   m.position.x -= 0.015; m.position.y += Math.sin(time + p.phase) * 0.001; break;
-        case 'snow':   m.position.y -= 0.006; m.position.x += Math.sin(time + p.phase) * 0.001; break;
-        case 'leaf':   m.position.y -= 0.006; m.position.x += Math.sin(time * 1.5 + p.phase) * 0.003; m.rotation.y += 0.02; break;
-        case 'sparkle':m.position.y += 0.003; m.position.x += Math.sin(time * 2 + p.phase) * 0.002; break;
+        case 'fall':   m.position.y -= 0.008 * step; m.position.x += Math.sin(time + p.phase) * 0.002 * step; break;
+        case 'fly':    m.position.x += Math.cos(time * 0.5 + p.phase) * 0.003 * step; m.position.y += Math.sin(time + p.phase) * 0.002 * step; m.position.z += Math.sin(time * 0.3 + p.phase) * 0.003 * step; break;
+        case 'rain':   m.position.y -= 0.04 * step; break;
+        case 'wind':   m.position.x -= 0.015 * step; m.position.y += Math.sin(time + p.phase) * 0.001 * step; break;
+        case 'snow':   m.position.y -= 0.006 * step; m.position.x += Math.sin(time + p.phase) * 0.001 * step; break;
+        case 'leaf':   m.position.y -= 0.006 * step; m.position.x += Math.sin(time * 1.5 + p.phase) * 0.003 * step; m.rotation.y += 0.02 * step; break;
+        case 'sparkle':m.position.y += 0.003 * step; m.position.x += Math.sin(time * 2 + p.phase) * 0.002 * step; break;
       }
       if (m.position.y < -1 || m.position.y > 3 || Math.abs(m.position.x) > 2.5) {
         this._resetParticle(m, p.type);
       }
+    }
+    if(!reduced) {
+      this.particles.forEach((p,i)=>{p.mesh.updateMatrix();this.particleMesh.setMatrixAt(i,p.mesh.matrix);});
+      this.particleMesh.instanceMatrix.needsUpdate=true;
     }
 
     // Breathing spotlight
@@ -292,8 +314,7 @@ export class WorldSanctuary {
 
     // Add spotlights to scene (they go outside the group for proper world-space positioning)
     this.globes.forEach(g => {
-      scene.add(g.spot);
-      scene.add(g.spot.target);
+      this.group.add(g.spot, g.spot.target);
       this.spotLights.push(g.spot);
     });
     // Also need to update spotlight target positions to world space
@@ -302,7 +323,7 @@ export class WorldSanctuary {
 
   _updateSpotPositions() {
     this.globes.forEach(g => {
-      const wp = new THREE.Vector3(); g.group.getWorldPosition(wp);
+      const wp = g.group.position;
       g.spot.position.set(wp.x, wp.y + 2.2, wp.z);
       g.spot.target.position.set(wp.x, wp.y + 1.5, wp.z);
     });
@@ -313,16 +334,16 @@ export class WorldSanctuary {
     const hs = this._roomHalf;
 
     // Floor
-    b(std(0x1e1a2e), 0, -0.1, 0, hs * 2, 0.2, 10, false).parent = g;
     g.add(b(std(0x1e1a2e), 0, -0.1, 0, hs * 2, 0.2, 10, false));
     for (let i = -6; i <= 6; i++) {
       g.add(b(std(0x252236), i, 0.01, 0, 0.9, 0.02, 9));
     }
 
     // Walls
-    g.add(b(std(0x15121e), 0, 3, -5, hs * 2, 6, 0.3));
-    g.add(b(std(0x15121e), -hs + 0.15, 3, 0, 0.3, 6, 10));
-    g.add(b(std(0x15121e), hs - 0.15, 3, 0, 0.3, 6, 10));
+    const wallMat=new THREE.MeshStandardMaterial({color:0x283044,roughness:.95});
+    for(const [x,z,w,d] of [[0,-5,hs*2,.3],[-hs+.15,0,.3,10],[hs-.15,0,.3,10]]) {
+      const wall=b(wallMat,x,3,z,w,6,d);wall.receiveShadow=false;g.add(wall);
+    }
 
     // Ceiling beams
     for (const z of [-3, 0, 3]) {
@@ -331,15 +352,12 @@ export class WorldSanctuary {
   }
 
   _buildGlobes() {
-    const radius = 3.5;
-    const startA = -Math.PI * 0.4;
-    const endA = Math.PI * 0.4;
+    const positions = [[-3.4,1],[-3.4,-1.2],[-2.8,-3.2],[0,-3.4],[2.8,-3.2],[3.4,-1.2],[3.4,1]];
 
     COUNTRIES.forEach((c, i) => {
-      const t = i / (COUNTRIES.length - 1);
-      const a = startA + t * (endA - startA);
-      const pos = new THREE.Vector3(Math.sin(a) * radius, 0, -(Math.cos(a) * radius) - 1.5);
+      const pos = new THREE.Vector3(positions[i][0],0,positions[i][1]);
       const globe = new SnowGlobe(pos, c, i);
+      globe.group.rotation.y=Math.atan2(-pos.x,2-pos.z);
       this.group.add(globe.group);
       this.globes.push(globe);
     });
@@ -383,7 +401,8 @@ export class WorldSanctuary {
     key.shadow.camera.top = 6;
     key.shadow.camera.bottom = -6;
     key.shadow.bias = -0.001;
-    this.group.add(key);
+    key.shadow.normalBias = .04;
+    this.group.add(key,key.target);
 
     // Warm wall accent lights — along the back (north) wall
     for (const x of [-4, -2, 0, 2, 4]) {
@@ -419,9 +438,11 @@ export class WorldSanctuary {
     return Math.sqrt((worldPos.x - ex) ** 2 + (worldPos.z - ez) ** 2) < 1.8;
   }
 
-  update(dt) {
-    const time = performance.now() * 0.001;
-    for (const g of this.globes) g.update(time);
+  update(dt, playerPos) {
+    this._time = (this._time || 0) + dt;
+    this._motion ??= window.matchMedia('(prefers-reduced-motion: reduce)');
+    const focused = playerPos ? this.getNearestGlobe(playerPos, 1.8) : null;
+    for (const g of this.globes) g.update(this._time,dt,g===focused,this._motion.matches);
   }
 }
 

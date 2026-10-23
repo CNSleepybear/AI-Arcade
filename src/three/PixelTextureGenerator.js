@@ -25,7 +25,8 @@ export class PixelTextureGenerator {
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const base = new THREE.Color(colorBase);
+    // Canvas RGB values are sRGB; THREE.Color stores linear working values.
+    const base = new THREE.Color(colorBase).convertLinearToSRGB();
     for (let y = 0; y < size; y += pixelSize) {
       for (let x = 0; x < size; x += pixelSize) {
         const noise = (Math.random() - 0.5) * noiseIntensity;
@@ -51,7 +52,7 @@ export class PixelTextureGenerator {
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const col1 = new THREE.Color(c1), col2 = new THREE.Color(c2);
+    const col1 = new THREE.Color(c1).convertLinearToSRGB(), col2 = new THREE.Color(c2).convertLinearToSRGB();
     for (let y = 0; y < size; y += pixelSize) {
       const isStripe = Math.floor(y / stripeW) % 2 === 0;
       const base = isStripe ? col1 : col2;

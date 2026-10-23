@@ -50,6 +50,10 @@ export class ArcadeMachine {
     this._buildControlPanel();
     this._buildSeat();
     this._buildNeonTubes();
+    this._attractCanvas = document.createElement('canvas');
+    this._attractCanvas.width = 512; this._attractCanvas.height = 384;
+    this._attractCtx = this._attractCanvas.getContext('2d');
+    this._reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     // Seat/camera positions
     const rotAxis = new THREE.Vector3(0, 1, 0);
@@ -65,6 +69,8 @@ export class ArcadeMachine {
 
     this.time = Math.random() * 100;
     this.attractPhase = 0;
+    this._screenElapsed = 1;
+    this._marqueeElapsed = 1;
   }
 
   // ==================== Cabinet Body ====================
@@ -328,6 +334,44 @@ export class ArcadeMachine {
   // ==================== Update ====================
   update(dt) {
     this.time += dt;
+    this.attractPhase += dt * 2;
+    this._screenElapsed += dt;
+    this._marqueeElapsed += dt;
+
+    // Canvas drawing and texture uploads need far fewer ticks than the camera.
+    const screenInterval = this._reduced.matches ? 0.25 : 1 / 24;
+    if (this._screenElapsed + 1e-8 >= screenInterval) {
+      const screenDt = this._screenElapsed;
+      this._screenElapsed = Math.max(0, this._screenElapsed - Math.floor((this._screenElapsed + 1e-8) / screenInterval) * screenInterval);
+      this._drawScreen(screenDt);
+    }
+
+    // Emissive breathing
+    const breathe = 0.5 + 0.5 * Math.sin(this.time * 2.5);
+    this.screenMat.emissiveIntensity = 0.5 + breathe * 0.25;
+
+    this.neonPhase += dt * (1.8 + Math.sin(this.time * 0.7) * 0.6);
+    for (const el of this.neonElements) {
+      const flicker = 0.65 + 0.35 * Math.sin(this.neonPhase + el.phase);
+      const buzz = 1.0 - 0.15 * Math.max(0, Math.sin(this.time * 13.7 + el.phase * 3.1));
+      el.mesh.material.emissiveIntensity = el.baseIntensity * flicker * buzz;
+    }
+
+    if (this._marqueeElapsed + 1e-8 >= 0.1) {
+      this._marqueeElapsed = Math.max(0, this._marqueeElapsed - Math.floor((this._marqueeElapsed + 1e-8) / 0.1) * 0.1);
+      this._drawMarqueeText(0.8 + 0.2 * Math.sin(this.time * 1.7));
+      this._marqueeMesh.material.map.needsUpdate = true;
+    }
+
+    this.sparkTimer -= dt;
+    if (!this._reduced.matches && this.sparkTimer <= 0 && this.sparkParticles.length < 15) {
+      this.sparkTimer = this.sparkInterval * (0.5 + Math.random());
+      this._spawnSpark();
+    }
+    this._updateSparks(dt);
+  }
+
+  _drawScreen(dt) {
 
     // --- Screen attract mode rendering ---
     const ctx = this.screenCtx;
@@ -337,10 +381,8 @@ export class ArcadeMachine {
     const renderer = ATTRACT_RENDERERS[this.config.id];
     if (renderer) {
       const origW = 512, origH = 384;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = origW;
-      tempCanvas.height = origH;
-      const tempCtx = tempCanvas.getContext('2d');
+      const tempCanvas = this._attractCanvas;
+      const tempCtx = this._attractCtx;
       renderer(tempCtx, origW, origH, this.time, this.config.attractColor || '#0ff');
       ctx.drawImage(tempCanvas, 0, 0, w, h);
 
@@ -348,7 +390,7 @@ export class ArcadeMachine {
       ctx.fillStyle = 'rgba(0,0,0,0.06)';
       for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
       // Occasional horizontal glitch line
-      if (Math.random() < 0.04) {
+      if (!this._reduced.matches && Math.random() < dt * 0.35) {
         const gy = Math.floor(Math.random() * h);
         ctx.fillStyle = `rgba(${Math.floor(Math.random()*100)},${Math.floor(Math.random()*255)},${Math.floor(Math.random()*100)},0.15)`;
         ctx.fillRect(0, gy, w, 1 + Math.floor(Math.random() * 2));
@@ -358,7 +400,6 @@ export class ArcadeMachine {
     }
 
     // Pulsing "insert coin" label
-    this.attractPhase += dt * 2;
     const alpha = 0.4 + 0.4 * Math.sin(this.attractPhase);
     ctx.fillStyle = `rgba(255,255,200,${alpha})`;
     ctx.font = '10px monospace';
@@ -367,32 +408,6 @@ export class ArcadeMachine {
     ctx.fillText(label, w / 2, h * 0.9);
     this.screenTexture.needsUpdate = true;
 
-    // Emissive breathing
-    const breathe = 0.5 + 0.5 * Math.sin(this.time * 2.5);
-    this.screenMat.emissiveIntensity = 0.5 + breathe * 0.25;
-
-    // --- Neon flicker animation ---
-    this.neonPhase += dt * (1.8 + Math.sin(this.time * 0.7) * 0.6);
-    for (const el of this.neonElements) {
-      const flicker = 0.65 + 0.35 * Math.sin(this.neonPhase + el.phase);
-      const buzz = 1.0 - 0.15 * Math.max(0, Math.sin(this.time * 13.7 + el.phase * 3.1));
-      el.mesh.material.emissiveIntensity = el.baseIntensity * flicker * buzz;
-    }
-
-    // Marquee text glow pulsing
-    const marqueeIntensity = 0.8 + 0.2 * Math.sin(this.time * 1.7);
-    this._drawMarqueeText(marqueeIntensity);
-    if (this._marqueeMesh && this._marqueeMesh.material.map) {
-      this._marqueeMesh.material.map.needsUpdate = true;
-    }
-
-    // --- Screen edge CRT spark particles ---
-    this.sparkTimer -= dt;
-    if (this.sparkTimer <= 0 && this.sparkParticles.length < 15) {
-      this.sparkTimer = this.sparkInterval * (0.5 + Math.random());
-      this._spawnSpark();
-    }
-    this._updateSparks(dt);
   }
 
   // ==================== CRT Spark Particles ====================
@@ -410,7 +425,7 @@ export class ArcadeMachine {
       default: lx = hw; ly = -hh + t * hh * 2; break;
     }
 
-    const geo = new THREE.PlaneGeometry(0.015, 0.015);
+    const geo = new THREE.BoxGeometry(0.015, 0.015, 0.015);
     const mat = new THREE.MeshBasicMaterial({
       color: this.accentColor,
       transparent: true,

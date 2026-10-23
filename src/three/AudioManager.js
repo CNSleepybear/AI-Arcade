@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AUDIO_REGISTRY, getAudioById, getPlaylistTrackIds } from '../data/audioRegistry.js';
+import { SoundDesign } from './SoundDesign.js';
 
 /**
  * AudioManager — loads, caches, and plays audio from AUDIO_REGISTRY config table.
@@ -20,6 +21,7 @@ export class AudioManager {
   constructor(listener) {
     this.listener = listener;
     this.ctx = listener.context;
+    this.sfx = new SoundDesign(this.ctx, listener.gain);
 
     /** @type {Map<string, AudioBuffer>} cache */
     this.buffers = new Map();
@@ -244,125 +246,10 @@ export class AudioManager {
     return positional;
   }
 
-  /** @param {string} id */
-  playSFX(id) {
+  /** Play the unified procedural sound palette through the SFX volume bus. */
+  playSFX(id, options = {}) {
     const entry = getAudioById(id);
-    if (!entry) return;
-    const buffer = this.buffers.get(id);
-    const vol = entry.volume ?? 0.5;
-    if (buffer) {
-      const source = this.ctx.createBufferSource();
-      source.buffer = buffer;
-      const gain = this.ctx.createGain();
-      gain.gain.value = vol;
-      source.connect(gain);
-      gain.connect(this.listener.gain);
-      source.start();
-      source.onended = () => { source.disconnect(); gain.disconnect(); };
-    } else {
-      this._playSyntheticSFX(id, vol);
-    }
-  }
-
-  /**
-   * Generate synthetic 8-bit/retro sounds via Web Audio API.
-   * Covers all 4 SFX types — no external files needed.
-   */
-  _playSyntheticSFX(id, vol) {
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const masterGain = ctx.createGain();
-    masterGain.gain.value = vol;
-    masterGain.connect(this.listener.gain);
-
-    switch (id) {
-      case 'sfx_step': {
-        const bufSize = Math.floor(ctx.sampleRate * 0.06);
-        const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < bufSize; i++) {
-          const t = i / bufSize;
-          data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 12) * 0.5;
-        }
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.value = 200;
-        src.connect(filter);
-        filter.connect(masterGain);
-        src.start(now);
-        src.onended = () => { src.disconnect(); filter.disconnect(); masterGain.disconnect(); };
-        break;
-      }
-      case 'sfx_coin': {
-        const osc1 = ctx.createOscillator();
-        osc1.type = 'square';
-        osc1.frequency.setValueAtTime(880, now);
-        osc1.frequency.linearRampToValueAtTime(1320, now + 0.06);
-        const g1 = ctx.createGain();
-        g1.gain.setValueAtTime(vol * 0.35, now);
-        g1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-        osc1.connect(g1);
-        g1.connect(masterGain);
-        osc1.start(now);
-        osc1.stop(now + 0.16);
-        osc1.onended = () => { osc1.disconnect(); g1.disconnect(); masterGain.disconnect(); };
-        break;
-      }
-      case 'sfx_drink': {
-        const osc = ctx.createOscillator();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(400, now);
-        osc.frequency.linearRampToValueAtTime(180, now + 0.25);
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(vol * 0.4, now);
-        g.gain.setValueAtTime(vol * 0.4, now + 0.1);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-        const lfo = ctx.createOscillator();
-        lfo.type = 'sine';
-        lfo.frequency.value = 12;
-        const lfoGain = ctx.createGain();
-        lfoGain.gain.value = 40;
-        lfo.connect(lfoGain);
-        lfoGain.connect(osc.frequency);
-        lfo.start(now);
-        lfo.stop(now + 0.36);
-        osc.connect(g);
-        g.connect(masterGain);
-        osc.start(now);
-        osc.stop(now + 0.36);
-        osc.onended = () => {
-          osc.disconnect(); g.disconnect(); lfo.disconnect(); lfoGain.disconnect(); masterGain.disconnect();
-        };
-        break;
-      }
-      case 'sfx_shard': {
-        const osc1 = ctx.createOscillator();
-        osc1.type = 'triangle';
-        osc1.frequency.value = 1600;
-        const osc2 = ctx.createOscillator();
-        osc2.type = 'sine';
-        osc2.frequency.value = 2400;
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(vol * 0.3, now);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-        osc1.connect(g);
-        osc2.connect(g);
-        g.connect(masterGain);
-        osc1.start(now);
-        osc1.stop(now + 0.46);
-        osc2.start(now);
-        osc2.stop(now + 0.46);
-        osc1.onended = () => {
-          osc1.disconnect(); osc2.disconnect(); g.disconnect(); masterGain.disconnect();
-        };
-        break;
-      }
-      default:
-        masterGain.disconnect();
-        break;
-    }
+    this.sfx.play(id, entry?.volume ?? 0.55, options);
   }
 
   /** @param {string} id */
