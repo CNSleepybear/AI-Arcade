@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeStaticMeshes } from './VoxelRig.js';
+import { brushedMetalTexture, muralMesh } from './EnvironmentalArt.js';
 
-export const NIGHTSHIFT = Object.freeze({ ink: 0x111b2b, slate: 0x2d3d50, cyan: 0x72d9ce, amber: 0xe8b47e, violet: 0xafa0e8 });
+export const NIGHTSHIFT = Object.freeze({ ink: 0x111b2b, slate: 0x2d3d50, cyan: 0x72d9ce, amber: 0xe8b47e, violet: 0xafa0e8, coral: 0xe7837f, paper: 0xeee8db });
 
 function texture(canvas) {
   const map = new THREE.CanvasTexture(canvas);
@@ -66,6 +67,7 @@ export class NightshiftArt {
   constructor(world) {
     this.time = 0;
     this.motes = [];
+    this.animated = [];
     this._dummy = new THREE.Object3D();
     this._reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     this._materials = new Map();
@@ -79,13 +81,21 @@ export class NightshiftArt {
     world.machines.forEach((machine, i) => this._cabinet(machine, i));
     this._motes(world.tavern.group, -14, -7, NIGHTSHIFT.amber);
     this._motes(world.plaza.group, -4.5, 4.5, NIGHTSHIFT.cyan);
+    this._finishPlaza(world.plaza.group);
+    this._finishArcade(world.arcade.group);
+    this._finishTavern(world.tavern.group);
+    this._finishDepths(world.depths.group);
+    this._finishRooftop(world.rooftop.group);
+    this._finishSanctuary(world.sanctuary.group);
+    this._authoredMurals(world);
+    this._ambientDynamics(world);
   }
 
   _material(color, glow = false) {
     const key = `${color}:${glow}`;
     if (!this._materials.has(key)) this._materials.set(key, glow
       ? new THREE.MeshBasicMaterial({ color })
-      : new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.25 }));
+      : new THREE.MeshStandardMaterial({ color, map: brushedMetalTexture(), roughness: 0.58, metalness: 0.38 }));
     return this._materials.get(key);
   }
 
@@ -260,13 +270,173 @@ export class NightshiftArt {
     this._sign(g,0,4.1,-4.81,4,'THE WORLD / IN MINIATURE','SEVEN PLACES. A THOUSAND STORIES.',NIGHTSHIFT.violet);
   }
 
+  _authoredMurals(world) {
+    const place=(group,kind,x,y,z,w,rotation=0)=>{const mesh=muralMesh(kind,w);mesh.position.set(x,y,z);mesh.rotation.y=rotation;group.add(mesh);};
+    place(world.plaza.group,'plaza',-4.82,2.05,2.7,2.7,Math.PI/2);
+    place(world.arcade.group,'arcade',10.5,3.37,-4.82,4.6);
+    place(world.arcade.group,'arcade',10.5,3.37,4.82,4.6,Math.PI);
+    place(world.tavern.group,'tavern',-10.4,2.75,-4.82,4.4);
+    place(world.depths.group,'depths',3.5,2.05,7.74,4.1,Math.PI);
+    place(world.rooftop.group,'rooftop',-4.76,2.3,-2.25,2.25,Math.PI/2);
+    place(world.sanctuary.group,'sanctuary',0,2.8,-4.76,5.3);
+  }
+
+  _ambientDynamics(world) {
+    for(let i=0;i<3;i++) {
+      const material=new THREE.MeshBasicMaterial({color:i===1?NIGHTSHIFT.cyan:NIGHTSHIFT.violet,transparent:true,opacity:.35,depthWrite:false});
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(.62+i*.13,.018,4,32),material);ring.rotation.x=Math.PI/2;ring.position.y=.18+i*.42;world.plaza.group.add(ring);
+      this.animated.push({type:'pulse',object:ring,phase:i*1.7,base:.35});
+    }
+    const token=new THREE.Group();token.position.set(10.5,2.08,0);token.scale.setScalar(.68);world.arcade.group.add(token);
+    this._box(token,0,0,0,.34,.34,.07,NIGHTSHIFT.amber,true);this._box(token,0,0,.045,.22,.22,.025,0x26384b);
+    this._box(token,0,0,.065,.055,.15,.02,NIGHTSHIFT.amber,true);this._box(token,.055,.045,.065,.12,.045,.02,NIGHTSHIFT.amber,true);
+    this.animated.push({type:'hover',object:token,base:2.08,phase:0});
+    const equalizer=new THREE.Group();equalizer.position.set(-10.5,1.1,-4.69);world.tavern.group.add(equalizer);
+    for(let i=0;i<17;i++) {
+      const bar=this._box(equalizer,-1.2+i*.15,.25,0,.075,.5,.035,i%4===0?NIGHTSHIFT.coral:NIGHTSHIFT.amber,true);
+      this.animated.push({type:'equalizer',object:bar,phase:i*.73,base:.5});
+    }
+    for(const side of [-1,1])for(let i=0;i<9;i++) {
+      const cube=this._box(world.depths.group,side*5.6,.12,-5+i*1.15,.075,.075,.22,i%3?NIGHTSHIFT.violet:NIGHTSHIFT.cyan,true);
+      this.animated.push({type:'data',object:cube,phase:i/9,side});
+    }
+    for(const [x,z] of [[-3.6,-3.1],[3.7,-3.2]]) {
+      const rotor=new THREE.Group();rotor.position.set(x,1.48,z);world.rooftop.group.add(rotor);
+      this._box(rotor,0,0,0,.72,.025,.1,0x8a99a7);this._box(rotor,0,0,0,.1,.025,.72,0x8a99a7);this._box(rotor,0,.02,0,.16,.06,.16,NIGHTSHIFT.amber,true);
+      this.animated.push({type:'rotor',object:rotor,phase:x});
+    }
+    for(let i=0;i<7;i++) {
+      const material=new THREE.MeshBasicMaterial({color:i%2?NIGHTSHIFT.amber:NIGHTSHIFT.violet,transparent:true,opacity:.32,depthWrite:false});
+      const marker=new THREE.Mesh(new THREE.RingGeometry(.76,.79,32),material);marker.rotation.x=-Math.PI/2;marker.position.set(-4.2+i*1.4,.035,-1.25);world.sanctuary.group.add(marker);
+      this.animated.push({type:'pulse',object:marker,phase:i*.65,base:.32});
+    }
+  }
+
+  _finishPlaza(g) {
+    const fixtures = new THREE.Group(); fixtures.name = 'PlazaFixtures'; g.add(fixtures);
+    for (const z of [-2.8, 2.8]) {
+      this._box(fixtures, 0, 3.82, z, 2.3, .12, .42, 0x26374a);
+      this._box(fixtures, 0, 3.68, z, 1.85, .08, .26, 0x627783);
+      this._box(fixtures, 0, 3.62, z, 1.65, .025, .2, NIGHTSHIFT.amber, true);
+      for (const x of [-.85, .85]) this._box(fixtures, x, 3.92, z, .035, .25, .035, 0x526274);
+    }
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2;
+      const m = this._box(fixtures, Math.sin(a) * .88, .035, Math.cos(a) * .88, .22, .025, .07, i % 3 ? 0x4d5375 : NIGHTSHIFT.violet, true);
+      m.rotation.y = a;
+    }
+    for (const x of [-3.8, 3.8]) {
+      this._box(fixtures, x, .62, -4.55, .75, 1.24, .32, 0x26364a);
+      this._box(fixtures, x, .82, -4.36, .55, .38, .025, 0x101c2c);
+      for (let i = 0; i < 3; i++) this._box(fixtures, x - .18 + i * .18, .82, -4.34, .07, .17, .015, i === 1 ? NIGHTSHIFT.amber : NIGHTSHIFT.cyan, true);
+      this._box(fixtures, x, .2, -4.34, .45, .035, .025, 0x74818f);
+    }
+    this._sign(g, 0, 3.55, -4.62, 4.5, 'THE NIGHT IS STILL YOUNG', 'CHOOSE A DISTRICT / MAKE YOURSELF AT HOME', NIGHTSHIFT.amber);
+    const fill = new THREE.PointLight(0x8bcbd2, 4, 8, 2); fill.position.set(0, 2.8, 1.5); g.add(fill);
+    mergeStaticMeshes(fixtures);
+  }
+
+  _finishArcade(g) {
+    const fixtures = new THREE.Group(); fixtures.name = 'ArcadeFixtures'; g.add(fixtures);
+    for (const x of [7.1, 10.5, 13.9]) {
+      this._box(fixtures, x, 3.25, 0, .08, 1.25, .08, 0x4c5c6d);
+      this._box(fixtures, x, 2.65, 0, 1.65, .48, .12, 0x152437);
+      this._box(fixtures, x, 2.88, .07, 1.55, .035, .02, x === 10.5 ? NIGHTSHIFT.violet : NIGHTSHIFT.cyan, true);
+    }
+    for (const z of [-4.62, 4.62]) for (const x of [7.2, 10.5, 13.8]) {
+      this._box(fixtures, x, 3.42, z, 1.05, .48, .22, 0x29394b);
+      for (let i = 0; i < 6; i++) this._box(fixtures, x - .4 + i * .16, 3.42, z + (z < 0 ? .12 : -.12), .055, .3, .025, 0x101b2b);
+    }
+    for (const x of [6.65, 14.35]) {
+      this._box(fixtures, x, 2.05, 0, .12, .12, 8.8, 0x536274);
+      for (const z of [-3, 0, 3]) this._box(fixtures, x, 2.05, z, .22, .22, .22, 0x29394c);
+    }
+    for (let z = -3; z <= 3; z += 1.5) {
+      this._box(fixtures, 10.5, .022, z, 1.25, .012, .045, 0x7f718e, true);
+      for (const x of [9.65, 11.35]) this._box(fixtures, x, .022, z, .22, .012, .045, NIGHTSHIFT.cyan, true);
+    }
+    this._sign(g, 10.5, 2.66, .075, 1.5, 'PLAY / 02', 'INSERT COIN', NIGHTSHIFT.cyan);
+    mergeStaticMeshes(fixtures);
+  }
+
+  _finishTavern(g) {
+    const fixtures = new THREE.Group(); fixtures.name = 'TavernFixtures'; g.add(fixtures);
+    for (const x of [-13.6, -10.4, -7.2]) {
+      this._box(fixtures, x, 3.55, 1.9, .06, .65, .06, 0x51434a);
+      this._box(fixtures, x, 3.16, 1.9, .58, .18, .58, 0x694b40);
+      this._box(fixtures, x, 3.04, 1.9, .42, .055, .42, NIGHTSHIFT.amber, true);
+    }
+    for (const [x, z] of [[-7.2,-3.3],[-7.2,3.3]]) {
+      this._box(fixtures, x, .72, z, 1.15, .12, .85, 0x624638);
+      this._box(fixtures, x, .35, z, .14, .7, .14, 0x38404a);
+      this._box(fixtures, x, .08, z, .65, .08, .55, 0x38404a);
+      for (const dx of [-.28, .28]) {
+        this._box(fixtures, x + dx, .84, z, .14, .18, .14, 0x9d7655);
+        this._box(fixtures, x + dx, .94, z, .1, .025, .1, NIGHTSHIFT.amber, true);
+      }
+    }
+    this._box(fixtures, -14.5, 2.2, -2.7, .22, 1.5, 2.4, 0x182a38);
+    for (let i = 0; i < 5; i++) this._box(fixtures, -14.36, 1.65 + i * .25, -2.7, .025, .035, 1.8 - i * .16, i === 0 ? NIGHTSHIFT.coral : 0xa78869, true);
+    this._sign(g, -14.35, 2.75, -2.7, 1.6, 'LIVE / TONIGHT', 'BONE & STRING · 23:00', NIGHTSHIFT.coral, Math.PI / 2);
+    mergeStaticMeshes(fixtures);
+  }
+
+  _finishDepths(g) {
+    const fixtures = new THREE.Group(); fixtures.name = 'DepthsFixtures'; g.add(fixtures);
+    for (const x of [-6.6, 6.6]) for (const z of [-4.5, 0, 4.5]) {
+      this._box(fixtures, x, .68, z, .65, 1.36, .85, 0x1d2b40);
+      this._box(fixtures, x, 1.38, z, .72, .08, .92, 0x46516b);
+      this._box(fixtures, x, .9, z + .44, .42, .32, .025, 0x0e192b);
+      for (let i = 0; i < 3; i++) this._box(fixtures, x - .14 + i * .14, .9, z + .46, .055, .16, .015, i === 2 ? NIGHTSHIFT.amber : NIGHTSHIFT.violet, true);
+    }
+    for (let i = 0; i < 8; i++) {
+      const x = -3.5 + i;
+      this._box(fixtures, x, .018, 5.8, .48, .014, .055, i % 2 ? 0x51446f : NIGHTSHIFT.violet, true);
+      this._box(fixtures, x, 3.52, -6.9, .035, .18, .4, 0x61738a);
+    }
+    this._sign(g, 0, 3.3, 7.72, 3.5, 'ARCHIVE SECTOR / 03', 'HANDLE YOUR MEMORIES WITH CARE', NIGHTSHIFT.violet, Math.PI);
+    mergeStaticMeshes(fixtures);
+  }
+
+  _finishRooftop(g) {
+    const fixtures = new THREE.Group(); fixtures.name = 'RooftopFixtures'; g.add(fixtures);
+    for (const [x,z] of [[-3.6,-3.1],[3.7,-3.2]]) {
+      this._box(fixtures, x, .42, z, 1.25, .84, 1, 0x35465b);
+      this._box(fixtures, x, .88, z, 1.05, .1, .82, 0x56677a);
+      for (let i = 0; i < 6; i++) this._box(fixtures, x - .42 + i * .17, .46, z + .51, .06, .56, .025, 0x17283c);
+      this._box(fixtures, x, 1.15, z, .14, .5, .14, 0x43566b);
+      this._box(fixtures, x, 1.42, z, .8, .08, .18, 0x617184);
+    }
+    for (const x of [-4.45, 4.45]) for (const z of [-3.8, 0, 3.8]) {
+      this._box(fixtures, x, 1.25, z, .08, .65, .08, 0x3c4f64);
+      this._box(fixtures, x, 1.58, z, .18, .12, .18, NIGHTSHIFT.amber, true);
+    }
+    this._box(fixtures, -2.7, .13, 1.2, .7, .26, .55, 0x6e5547);
+    this._box(fixtures, -2.7, .31, 1.2, .62, .08, .47, 0xb08a64);
+    mergeStaticMeshes(fixtures);
+  }
+
+  _finishSanctuary(g) {
+    const fixtures = new THREE.Group(); fixtures.name = 'SanctuaryFixtures'; g.add(fixtures);
+    for (const x of [-4.5, 4.5]) {
+      this._box(fixtures, x, 2.4, 0, .18, 4.8, 9.4, 0x202a3c);
+      for (const z of [-3.5, 0, 3.5]) {
+        this._box(fixtures, x + (x < 0 ? .12 : -.12), 2.5, z, .08, 2.4, .06, 0x74678d, true);
+        this._box(fixtures, x + (x < 0 ? .14 : -.14), 1.15, z, .1, .08, 1.3, NIGHTSHIFT.amber, true);
+      }
+    }
+    for (let i = 0; i < 7; i++) {
+      const x = -4.2 + i * 1.4;
+      this._box(fixtures, x, .025, -1.15, 1.15, .018, .055, i % 2 ? 0x77678e : 0x9b876a, true);
+      this._box(fixtures, x, 4.35, -1.25, .62, .12, .5, 0x3d4558);
+      this._box(fixtures, x, 4.25, -1.25, .42, .04, .32, NIGHTSHIFT.paper, true);
+    }
+    mergeStaticMeshes(fixtures);
+    g.add(new THREE.HemisphereLight(0xe2d6c3, 0x34344d, .65));
+  }
+
   _cabinet(machine, index) {
     const g=machine.group, accent=machine.accentColor.getHex();
-    for(const side of [-1,1]) {
-      const map = signTexture(['META\nBREAK.','NEON\nHUNT.','DEEP\nDIVE.','CLOCK\nOUT.'][index%4],`PLAYER ${String(index+1).padStart(2,'0')} / READY`,accent,'poster');
-      const art = new THREE.Mesh(new THREE.PlaneGeometry(0.62,1.3), new THREE.MeshBasicMaterial({map}));
-      art.position.set(side*0.506,1.05,0);art.rotation.y=side*Math.PI/2;g.add(art);
-    }
     this._box(g,0,0.13,0.44,0.85,0.035,0.025,accent,true);
     this._box(g,0.23,0.55,0.44,0.18,0.28,0.04,0x4d5967);
     this._box(g,0.23,0.6,0.465,0.035,0.11,0.015,0x101b29);
@@ -291,6 +461,19 @@ export class NightshiftArt {
         this._dummy.rotation.set(0,t*.2+p.phase,0);this._dummy.scale.setScalar(.012+.014*(.5+.5*Math.sin(t+p.phase)));
         this._dummy.updateMatrix();mesh.setMatrixAt(i,this._dummy.matrix);
       });mesh.instanceMatrix.needsUpdate=true;
+    }
+    const t=this._reduced.matches?0:this.time;
+    for(const item of this.animated) {
+      if(item.type==='pulse') {
+        const wave=.5+.5*Math.sin(t*1.25+item.phase);item.object.material.opacity=item.base*(.55+wave*.45);
+        item.object.scale.setScalar(.97+wave*.05);
+      } else if(item.type==='hover') {
+        item.object.position.y=item.base+Math.sin(t*1.4)*.08;item.object.rotation.y=t*.65;item.object.rotation.z=Math.sin(t*.7)*.08;
+      } else if(item.type==='equalizer') {
+        const height=.18+(.5+.5*Math.sin(t*3.1+item.phase))*.62;item.object.scale.y=height;item.object.position.y=height/2;
+      } else if(item.type==='data') {
+        item.object.position.z=-5+((item.phase+t*.065)%1)*10;item.object.position.y=.12+Math.sin(t*2+item.phase*9)*.04;
+      } else if(item.type==='rotor') item.object.rotation.y=t*1.7+item.phase;
     }
   }
 }

@@ -107,6 +107,12 @@ const retroShader = new THREE.ShaderMaterial({
       return 5.0;
     }
 
+    vec3 brightSample(vec2 uv) {
+      vec3 sampleColor = texture2D(tDiffuse, uv).rgb;
+      float peak = max(sampleColor.r, max(sampleColor.g, sampleColor.b));
+      return sampleColor * smoothstep(0.58, 1.0, peak);
+    }
+
     void main() {
       vec4 texel = texture2D(tDiffuse, vUv);
       vec3 color = texel.rgb;
@@ -114,6 +120,12 @@ const retroShader = new THREE.ShaderMaterial({
       // Gamma dark-area inverse compensation (prevents crushing blacks)
       color = pow(max(color, vec3(0.0)), vec3(1.0 / 1.9));
       color = mix(vec3(0.012, 0.018, 0.03), color, 0.97);
+      vec2 px = 1.5 / uResolution;
+      vec3 bloom = brightSample(vUv + vec2(px.x, 0.0)) + brightSample(vUv - vec2(px.x, 0.0));
+      bloom += brightSample(vUv + vec2(0.0, px.y)) + brightSample(vUv - vec2(0.0, px.y));
+      bloom += brightSample(vUv + px) + brightSample(vUv - px);
+      bloom += brightSample(vUv + vec2(px.x, -px.y)) + brightSample(vUv + vec2(-px.x, px.y));
+      color += bloom * 0.022;
 
       // Adaptive dither mask based on local luminance
       float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -126,11 +138,15 @@ const retroShader = new THREE.ShaderMaterial({
       // Color quantization
       color = floor(color * uColorDepth + 0.5) / uColorDepth;
 
-      // Slight desaturation for retro feel
+      // Preserve hue in shadows while giving practical lights a warmer highlight.
       float gray = dot(color, vec3(0.299, 0.587, 0.114));
-      color = mix(vec3(gray), color, 0.94);
-      float edge = 1.0 - smoothstep(0.2, 0.85, distance(vUv, vec2(0.5)));
-      color *= mix(0.9, 1.0, edge);
+      color = mix(vec3(gray), color, 1.08);
+      float shadow = 1.0 - smoothstep(0.04, 0.42, luminance);
+      float highlight = smoothstep(0.38, 0.9, luminance);
+      color += vec3(0.012, 0.018, 0.03) * shadow;
+      color += vec3(0.018, 0.008, -0.006) * highlight;
+      float edge = 1.0 - smoothstep(0.28, 0.76, distance(vUv, vec2(0.5)));
+      color *= mix(0.88, 1.0, edge);
 
       gl_FragColor = vec4(color, texel.a);
     }
@@ -1801,8 +1817,8 @@ function animate() {
 
   // Pause all game logic while escape menu is open
   if (!suspended) {
-    if (currentFloorKey === 'SURFACE') for (const m of machines) m.update(dt);
-    if (currentFloorKey === 'DEPTHS') for (const m of depthsMachines) m.update(dt);
+    if (currentFloorKey === 'SURFACE') for (const m of machines) m.update(dt, camera.position);
+    if (currentFloorKey === 'DEPTHS') for (const m of depthsMachines) m.update(dt, camera.position);
     abyssWorld.update(dt, camera.position, currentFloorKey);
     if (currentFloorKey === 'DEPTHS' && abyssWorld.depths) { globalState._depthsTime = (globalState._depthsTime || 0) + dt; abyssWorld.depths.update(dt); abyssWorld.depths.updateAltar(); }
     // E.V.E. zone-aware context (every ~2s while roaming depths)

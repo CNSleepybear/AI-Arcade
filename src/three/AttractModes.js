@@ -416,12 +416,27 @@ export function drawLeaveAt6pmAttract(ctx, w, h, time, color) {
   ctx.fillText(t('attract.leave_6pm.sub'), cx, h * 0.90);
 }
 
+function drawAttractChrome(ctx, w, h, time, accent, code) {
+  ctx.save(); ctx.shadowBlur = 0; ctx.textAlign = 'left'; ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = 'rgba(3,10,18,.78)'; ctx.fillRect(10, 10, w - 20, 25);
+  ctx.fillStyle = accent; ctx.fillRect(10, 10, 3, 25); ctx.fillText(`ABYSS / ${code}`, 23, 27);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#b8cbd2'; ctx.fillText('INSERT COIN', w - 23, 27);
+  ctx.strokeStyle = accent; ctx.globalAlpha = .45; ctx.lineWidth = 2; ctx.strokeRect(5, 5, w - 10, h - 10);
+  ctx.globalAlpha = .12;
+  for (let y = 0; y < h; y += 4) { ctx.fillStyle = '#000'; ctx.fillRect(0, y, w, 1); }
+  ctx.globalAlpha = .35 + Math.sin(time * 2) * .08; ctx.fillStyle = accent;
+  for (const [x,y,sx,sy] of [[5,5,1,1],[w-5,5,-1,1],[5,h-5,1,-1],[w-5,h-5,-1,-1]]) {
+    ctx.fillRect(x, y, sx * 24, sy * 2); ctx.fillRect(x, y, sx * 2, sy * 24);
+  }
+  ctx.restore();
+}
+
 // Dispatch table
 export const ATTRACT_RENDERERS = {
-  'anomaly': drawAnomalyAttract,
-  'cyber-hunder': drawCyberHunderAttract,
-  'dark-water-stealth': drawDarkWaterStealthAttract,
-  'leave-at-6pm-evolved': drawLeaveAt6pmAttract,
+  'anomaly': (ctx,w,h,time,color) => { drawAnomalyAttract(ctx,w,h,time,color); drawAttractChrome(ctx,w,h,time,'#65ef9a','META_01'); },
+  'cyber-hunder': (ctx,w,h,time,color) => { drawCyberHunderAttract(ctx,w,h,time,color); drawAttractChrome(ctx,w,h,time,'#63ccec','HEX_02'); },
+  'dark-water-stealth': (ctx,w,h,time,color) => { drawDarkWaterStealthAttract(ctx,w,h,time,color); drawAttractChrome(ctx,w,h,time,'#719ed6','DEEP_03'); },
+  'leave-at-6pm-evolved': (ctx,w,h,time,color) => { drawLeaveAt6pmAttract(ctx,w,h,time,color); drawAttractChrome(ctx,w,h,time,'#efbb82','RUSH_04'); },
 };
 
 export function drawDefaultAttract(ctx, w, h, time, name, subtitle, color) {

@@ -11,6 +11,15 @@
   --bg-dark: #101824;
   --panel-bg: rgba(14, 23, 35, .96);
   --border-glow: 0 12px 36px #0005;
+  --surface-0: #0a111c;
+  --surface-1: #101c2a;
+  --surface-2: #172738;
+  --surface-3: #213449;
+  --signal: #79d9ce;
+  --signal-soft: #79d9ce26;
+  --display-font: Impact, 'Arial Black', sans-serif;
+  --panel-cut: 3px;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
 }
 
 html, body { color: var(--paper); cursor: default; font-family: 'Cascadia Code', 'Microsoft YaHei', 'Courier New', monospace; }
@@ -265,6 +274,57 @@ button:disabled { cursor: wait; opacity: .5; }
   .skip-boot { right: 20px; bottom: 20px; }
   #sfx-toggle { top: 20px; right: 138px; }
 }
+
+/* 2026 visual refresh: brighter focal art, compact instruments, shared surfaces. */
+#title-screen {
+  background: radial-gradient(ellipse at 74% 42%, #24445260 0, transparent 48%), linear-gradient(125deg, #0b131e 15%, #101b29 70%, #142433);
+}
+#title-screen::after { content: ''; position: absolute; inset: 82px max(6vw, 28px) 74px; border: 1px solid #67859514; pointer-events: none; z-index: -1; }
+#title-main { color: #f2ede2; text-shadow: 4px 4px 0 #314d5e, 8px 8px 0 #09111b; letter-spacing: -2px; }
+#title-subtitle { color: #f0bc83; font-weight: 700; }
+.title-eyebrow { padding: 8px 10px; border-left: 2px solid var(--signal); background: linear-gradient(90deg, #79d9ce12, transparent); width: fit-content; }
+.title-artwork { filter: drop-shadow(0 28px 34px #0007); }
+.title-artwork::before { content: ''; position: absolute; inset: 8% 3% 4%; border: 1px solid #7fb7bc20; background: linear-gradient(135deg, #79d9ce06, transparent 55%); pointer-events: none; }
+.title-stat { background: linear-gradient(90deg, #79d9ce06, transparent); }
+.title-stat-val { color: #f0e9dc; font-variant-numeric: tabular-nums; }
+#title-btn-enter { background: #efbb82; box-shadow: 4px 4px 0 #5e493d; transition: transform .18s var(--ease-out), background-color .18s, box-shadow .18s; }
+#title-btn-enter:hover { transform: translate(-1px, -2px); box-shadow: 6px 6px 0 #5e493d; }
+#title-btn-enter:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #5e493d; }
+#title-btn-char, #title-btn-logout, #lang-switcher, #sfx-toggle { transition: color .15s, background-color .15s, border-color .15s; }
+
+#hud { background: linear-gradient(105deg, #132335f2, #0d1825e8); border-color: #4e697e; box-shadow: 4px 4px 0 #050b1266; }
+#hud::after { content: ''; position: absolute; inset: 5px -5px -5px 5px; border-right: 1px solid #79d9ce24; border-bottom: 1px solid #79d9ce24; pointer-events: none; }
+#hud-char-portrait { border-color: var(--signal); box-shadow: inset 0 0 0 2px #101b29; }
+#hud-score, #hud-global-score-wrap { padding: 5px 7px; background: #e8b47e0b; border: 1px solid #e8b47e24; }
+#district-hud { padding: 10px 12px; border-right: 2px solid var(--amber); background: linear-gradient(90deg, transparent, #0b142080); }
+#prompt { border-top: 2px solid var(--signal); box-shadow: 4px 4px 0 #050b1288; letter-spacing: .5px; }
+#controls-hint { background: linear-gradient(90deg, transparent, #0c1725e8 15%, #0c1725e8 85%, transparent); border-color: #3d526426; }
+#aim-reticle { width: 18px; height: 18px; border: 0; opacity: .8; }
+#aim-reticle::before, #aim-reticle::after { content: ''; position: absolute; background: #d7eee2aa; }
+#aim-reticle::before { left: 0; top: 8px; width: 18px; height: 1px; }
+#aim-reticle::after { left: 8px; top: 0; width: 1px; height: 18px; }
+#aim-reticle i { top: 7px; left: 7px; width: 3px; height: 3px; background: var(--amber); }
+
+#eve-phone-frame { width: 292px; margin-top: 112px; border-color: #49697c; box-shadow: 5px 5px 0 #050b1255; }
+#eve-phone-header { padding: 10px 12px; }
+#eve-avatar-wrap, #eve-avatar-canvas { width: 50px; height: 50px; min-width: 50px; }
+#eve-name { font-size: 16px; }
+#eve-phone-body { padding: 10px 13px; }
+#eve-bubble { max-height: 104px; min-height: 38px; line-height: 1.75; }
+#eve-chat-form { padding: 8px 12px 10px; }
+#eve-phone[data-state='thinking'] #eve-phone-frame { border-top-color: var(--amber); }
+#eve-phone[data-state='speaking'] #eve-phone-frame { border-top-color: var(--signal); }
+
+#auth-panel-inner, #escape-menu-panel, #bar-menu-inner, #msg-create-inner, #eve-settings-inner, #char-select-panel, #fishing-inner {
+  background: linear-gradient(145deg, #18293af8, #0e1927fa); border-color: #526e82; box-shadow: 8px 8px 0 #050a1280, 0 24px 80px #0008;
+}
+#auth-title, #escape-menu-title, #bar-menu-title, #msg-create-title, #eve-settings-title, #char-select-panel h2 { font-family: var(--display-font); font-weight: 500; }
+:is(#auth-buttons, #eve-settings-buttons, #msg-create-buttons, #title-buttons) button, .escape-menu-btn, #bar-menu-close, #char-select-close { min-height: 42px; }
+:is(button, .char-option, .drink-card, .msg-tpl-btn):active { transform: translateY(1px); }
+:is(.char-option, .drink-card, .msg-tpl-btn, .msg-cat-btn) { transition: background-color .15s, border-color .15s, color .15s, transform .15s; }
+#game-header { background: linear-gradient(90deg, #142638, #0c1623); border-bottom: 2px solid var(--signal); }
+#game-title { letter-spacing: 2px; }
+#ach-toast { border-top: 3px solid var(--amber); background: #142638f5; }
 
 @media (min-width: 1500px) {
   #title-screen { padding-left: max(8vw, calc((100vw - 1450px) / 2)); padding-right: max(8vw, calc((100vw - 1450px) / 2)); }

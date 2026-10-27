@@ -58,6 +58,20 @@ export class TitleArtwork {
     c.setLineDash([3, 8]); c.beginPath(); c.ellipse(320, 401, 298, 114, 0, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
     const aura = c.createRadialGradient(330, 300, 10, 330, 300, 250);
     aura.addColorStop(0, '#203b493d'); aura.addColorStop(1, '#10151d00'); c.fillStyle = aura; c.fillRect(0, 0, 640, 520);
+    for (let layer = 0; layer < 2; layer++) {
+      const baseY = 332 + layer * 35;
+      for (let i = 0; i < 15; i++) {
+        const bw = 18 + (i * 13 % 30), bh = 30 + (i * 37 % (95 - layer * 25));
+        const bx = 20 + i * 42 - layer * 17;
+        c.fillStyle = layer ? '#142430' : '#101d29'; c.fillRect(bx, baseY - bh, bw, bh);
+        c.fillStyle = layer ? '#28404b' : '#1d303d'; c.fillRect(bx + 3, baseY - bh + 4, 2, bh - 4);
+        for (let wy = baseY - bh + 10; wy < baseY - 8; wy += 13) for (let wx = bx + 7; wx < bx + bw - 4; wx += 10) {
+          if ((wx + wy + i) % 4) continue;
+          c.fillStyle = (i + wy) % 3 ? '#416466' : '#8b725b'; c.fillRect(wx, wy, 3, 4);
+        }
+        if (i % 4 === 0) { c.fillStyle = '#314552'; c.fillRect(bx + bw / 2, baseY - bh - 15, 2, 15); }
+      }
+    }
 
     // Floating foundation and individually laid floor tiles.
     block(-0.5, -0.5, -0.65, 11.8, 8.8, 0.65, '#233740', '#14222e', '#0d1721');
@@ -79,6 +93,13 @@ export class TitleArtwork {
     c.fillStyle = '#14232d'; c.fillRect(-8,-28,155,44); c.strokeStyle = '#587077'; c.strokeRect(-8,-28,155,44);
     c.font = 'bold 23px monospace'; c.fillStyle = '#f0d6a5'; c.fillText('AI ARCADE', 0, 0);
     c.font = '7px monospace'; c.fillStyle = '#74bbb3'; c.fillText('OPEN LATE / PLAY FOREVER', 1, 10); c.restore();
+    for (const x of [3.1, 8.6]) line([x,.02,5.3],[x,.02,6.55], '#526573', 4);
+    face([[2.6,.03,5.55],[9.1,.03,5.55],[9.1,.03,6.55],[2.6,.03,6.55]], '#102331');
+    line([2.6,.04,5.55],[9.1,.04,5.55], '#e3ad77', 3);
+    line([2.6,.04,6.55],[9.1,.04,6.55], '#67d4ca', 3);
+    c.save(); const [rx, ry] = p(3.15,.05,6.17); c.setTransform(1,.5,0,1,rx,ry);
+    c.font = 'bold 21px monospace'; c.fillStyle = '#f2dec2'; c.fillText('NIGHTSHIFT',0,0);
+    c.font = '7px monospace'; c.fillStyle = '#72cfc6'; c.fillText('NEVER CLOSE / ALWAYS A LITTLE STRANGE',2,13); c.restore();
 
     // Wall vents and a small illuminated poster.
     block(0.15, 2.8, 2, 0.12, 1.7, 1.5, '#334a56', '#1e2f3d', '#b17c61');
@@ -136,6 +157,13 @@ export class TitleArtwork {
     block(5.45,6.45,0.65,0.09,0.12,0.15,'#d2a1a1','#d2a1a1','#7a8193');
     block(5.7,6.45,0.65,0.09,0.12,0.15,'#d2a1a1','#d2a1a1','#7a8193');
     line([6.13,6.55,0.2],[6.5,6.55,0.65],'#78869a',5);
+    for (let i = 0; i < 7; i++) {
+      const glow = .18 + .08 * Math.sin(time * 1.2 + i);
+      c.globalAlpha = glow;
+      face([[1+i*1.25,7.85,.04],[1.7+i*1.25,7.85,.04],[2.1+i*1.25,8.45,.04],[.7+i*1.25,8.45,.04]], i % 3 ? '#64d6cb' : '#e6ac77');
+    }
+    c.globalAlpha = 1;
+    for (let i = 0; i < 6; i++) block(.3+i*1.85,8.25,-.42,.8,.04,.12,i%2?'#416f74':'#8d725e',i%2?'#416f74':'#8d725e','#24313c');
     // Restrained foreground annotations.
     c.font = '9px monospace'; c.fillStyle = '#6c858c'; c.fillText('A PLACE BETWEEN WORLDS', 68, 488);
     c.fillStyle = '#d9b382'; c.fillRect(526,475,5,5); c.fillStyle = '#648c8b'; c.fillRect(536,475,5,5); c.fillStyle = '#9690bb'; c.fillRect(546,475,5,5);

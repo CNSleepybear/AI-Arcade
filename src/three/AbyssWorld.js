@@ -251,11 +251,11 @@ export class AbyssWorld {
   // ==================== Global Lighting (Gemini Warm Style) ====================
   _buildGlobalLighting() {
     // Warm ambient — reduced for pixel-style deeper shadows
-    const ambient = new THREE.AmbientLight(0xb5c8e0, 0.5);
+    const ambient = new THREE.AmbientLight(0xb5c8e0, 0.62);
     this.scene.add(ambient);
 
-    // Hemisphere — warm top, dark bottom
-    const hemi = new THREE.HemisphereLight(0xaabbd5, 0x0b1120, 0.45);
+    // Cool sky and warm ground bounce keep voxel faces readable.
+    const hemi = new THREE.HemisphereLight(0xb8d2ec, 0x202038, 0.58);
     this.scene.add(hemi);
 
     // Warm fog (matching v3 cozy room) — stored for dynamic switching

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from './RoundedBoxGeometry.js';
 import { PixelTextureGenerator } from './PixelTextureGenerator.js';
 import { ATTRACT_RENDERERS, drawDefaultAttract } from './AttractModes.js';
+import { buildCabinetShell } from './CabinetArt.js';
 import { t } from '../data/i18n.js';
 
 /**
@@ -80,18 +80,36 @@ export class ArcadeMachine {
     cabinetTex.wrapS = THREE.RepeatWrapping;
     cabinetTex.wrapT = THREE.RepeatWrapping;
 
-    // Main body — rounded box for smooth edges
-    const geo = new RoundedBoxGeometry(1.0, 2.0, 0.85, 0.04, 3);
-    const mat = new THREE.MeshStandardMaterial({
-      map: cabinetTex,
-      roughness: 0.85,
-      metalness: 0.05
-    });
-    const body = new THREE.Mesh(geo, mat);
-    body.position.y = 1.0;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    this.group.add(body);
+    const mat = new THREE.MeshStandardMaterial({ map: cabinetTex, roughness: .58, metalness: .28 });
+    const trim = new THREE.MeshStandardMaterial({ color: 0x34485e, roughness: .38, metalness: .68 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x0c1522, roughness: .8, metalness: .2 });
+    const accent = new THREE.MeshStandardMaterial({ color: this.accentColor, emissive: this.accentColor, emissiveIntensity: .45, roughness: .35 });
+    const { part } = buildCabinetShell(this.group, this.config.id, mat, trim, dark, accent);
+    part(1.1,.12,.96,0,.13,.02,trim);
+    part(.88,.18,.055,0,.24,.455,dark);
+    part(.76,.035,.02,0,.24,.49,accent);
+    part(1.08,.16,.96,0,2.03,.02,trim);
+    part(1.04,.12,.88,0,2.16,-.03,mat);
+    for (const side of [-1,1]) {
+      part(.09,1.7,.96,side*.535,1.05,.02,trim);
+      part(.035,1.25,.035,side*.585,1.08,.5,accent);
+      part(.1,.22,.98,side*.535,1.93,.02,mat);
+      for (let i=0;i<5;i++) part(.018,.035,.34,side*.585,.55+i*.09,-.08,dark);
+    }
+    if (this.config.id === 'anomaly') {
+      part(.72,.12,.7,0,2.3,-.04,dark);
+      part(.08,.24,.08,-.3,2.43,-.05,accent);
+      part(.08,.16,.08,.3,2.39,-.05,accent);
+    } else if (this.config.id === 'cyber-hunder') {
+      for (const side of [-1,1]) part(.24,.12,.82,side*.48,2.29,-.02,accent);
+      part(.52,.08,.68,0,2.28,-.03,trim);
+    } else if (this.config.id === 'dark-water-stealth') {
+      part(.86,.09,.72,0,2.29,-.03,accent);
+      part(.58,.08,.62,0,2.38,-.06,trim);
+    } else {
+      part(.92,.16,.75,0,2.3,-.02,mat);
+      part(.62,.035,.04,0,2.31,.375,accent);
+    }
   }
 
   // ==================== Neon Marquee Sign ====================
@@ -204,11 +222,22 @@ export class ArcadeMachine {
 
     // Screen plane
     const screenGeo = new THREE.PlaneGeometry(0.65, 0.48);
-    this.screenMat = new THREE.MeshStandardMaterial({
-      map: this.screenTexture,
-      emissive: this.screenColor,
-      emissiveIntensity: 0.6,
-      roughness: 0.2
+    this.screenMat = new THREE.ShaderMaterial({
+      uniforms: { tScreen: { value: this.screenTexture }, uGlow: { value: .8 }, uTime: { value: 0 }, uAccent: { value: this.screenColor } },
+      vertexShader: `varying vec2 vUv; void main(){vUv=uv;vec3 p=position;p.z+=.018*(1.-pow(abs(uv.x*2.-1.),2.));gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);}`,
+      fragmentShader: `
+        uniform sampler2D tScreen; uniform float uGlow; uniform float uTime; uniform vec3 uAccent; varying vec2 vUv;
+        void main(){
+          vec2 p=vUv*2.-1.;p*=1.+dot(p,p)*.035;vec2 uv=p*.5+.5;
+          if(uv.x<0.||uv.x>1.||uv.y<0.||uv.y>1.){gl_FragColor=vec4(.005,.009,.014,1.);return;}
+          vec3 col=texture2D(tScreen,uv).rgb;
+          float scan=.92+.08*abs(sin(uv.y*96.*3.14159));
+          float vig=1.-smoothstep(.3,1.25,dot(p,p))*.38;
+          float glass=pow(max(0.,1.-abs(p.x+p.y*.55+.35)),18.)*.075;
+          col=col*scan*vig*(.75+uGlow*.45)+uAccent*glass;
+          gl_FragColor=vec4(col,1.);
+        }`,
+      toneMapped: false
     });
     this.screenMesh = new THREE.Mesh(screenGeo, this.screenMat);
     this.screenMesh.position.set(0, 1.55, 0.5);
@@ -241,6 +270,10 @@ export class ArcadeMachine {
     const stick = new THREE.Mesh(stickGeo, stickMat);
     stick.position.set(-0.18, 1.15, 0.55);
     this.group.add(stick);
+    const knob = new THREE.Mesh(new THREE.BoxGeometry(.12,.1,.12), new THREE.MeshStandardMaterial({ color: 0xd95567, roughness: .28, metalness: .18 }));
+    knob.position.set(-.18,1.27,.55);knob.rotation.y=Math.PI/4;this.group.add(knob);
+    const washerMat = new THREE.MeshStandardMaterial({ color: 0x8294a5, roughness: .32, metalness: .8 });
+    for (const x of [.08,.22]) { const ring=new THREE.Mesh(new THREE.TorusGeometry(.064,.012,4,12),washerMat);ring.rotation.x=-Math.PI/2-.25;ring.position.set(x,1.035,.52);this.group.add(ring); }
 
     // Button 1 — cyan
     const btn1Geo = new THREE.BoxGeometry(0.08, 0.04, 0.08);
@@ -332,8 +365,9 @@ export class ArcadeMachine {
   }
 
   // ==================== Update ====================
-  update(dt) {
+  update(dt, playerPos) {
     this.time += dt;
+    this._proximity = playerPos ? THREE.MathUtils.clamp(1 - (this.getDistance(playerPos) - 1.2) / 3.8, 0, 1) : 0;
     this.attractPhase += dt * 2;
     this._screenElapsed += dt;
     this._marqueeElapsed += dt;
@@ -346,9 +380,10 @@ export class ArcadeMachine {
       this._drawScreen(screenDt);
     }
 
-    // Emissive breathing
-    const breathe = 0.5 + 0.5 * Math.sin(this.time * 2.5);
-    this.screenMat.emissiveIntensity = 0.5 + breathe * 0.25;
+    const breathe = this._reduced.matches ? .5 : 0.5 + 0.5 * Math.sin(this.time * 2.5);
+    this.screenMat.uniforms.uGlow.value = .65 + breathe * .18 + this._proximity * .55;
+    this.screenMat.uniforms.uTime.value = this._reduced.matches ? 0 : this.time;
+    this.glow.intensity = 1.2 + this._proximity * 2.1;
 
     this.neonPhase += dt * (1.8 + Math.sin(this.time * 0.7) * 0.6);
     for (const el of this.neonElements) {

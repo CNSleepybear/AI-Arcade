@@ -81,6 +81,7 @@ fs.mkdirSync(output, { recursive: true });
     await page.waitForTimeout(200);
     const scenes = [
       ['arcade', [7, 1.65, 1.5], [10.7, 1.6, -3.5], '蜂巢游戏厅'],
+      ['cabinet-close', [10.5, 1.55, -1.45], [10.5, 1.35, -4.2], '机台近景 · CRT / 侧绘 / 控制区'],
       ['tavern', [-7.2, 1.65, -1.5], [-11, 1.65, 3.3], '铁锚酒馆'],
       ['band', [-11.5, 1.9, .9], [-11.6, 1.45, -3.1], '铁锚酒馆 · 骷髅乐队'],
       ['depths', [0, -3.35, 6], [0, -3.0, -2], '记忆深渊'],
@@ -92,7 +93,7 @@ fs.mkdirSync(output, { recursive: true });
       await page.evaluate(async ({ zone, position, target, label, threeURL }) => {
         const THREE = await import(threeURL);
         const { renderer, scene, camera, target: lowRes } = window.__artScene;
-        const surface = ['arcade', 'tavern', 'band'].includes(zone);
+        const surface = ['arcade', 'cabinet-close', 'tavern', 'band'].includes(zone);
         ['VoxelArcade', 'VoxelTavern', 'VoxelPlaza'].forEach(name => { scene.getObjectByName(name).visible = surface; });
         scene.getObjectByName('VoxelDepths').visible = zone === 'depths';
         scene.getObjectByName('VoxelRooftop').visible = zone === 'rooftop' || zone === 'starry-sky';
